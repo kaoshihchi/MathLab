@@ -1,16 +1,5 @@
 function main_pulse_propagation
     addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'theory'));
-    % Load parameters from CSV file
-    % Table format: Parameter,Value,OnOff
-    UseParametersFile = true;
-    if UseParametersFile
-        params = readtable('analysis/Parameters.csv');
-        for idx = 1:height(params)
-            if params.OnOff(idx)
-                assignin('base', params.Parameter{idx}, params.Value(idx));
-            end
-        end
-    end
 % MainPulsePropagation_HHG.m
 %  Part I:
 %    Calculate the main beam loss propagated in a capillary waveguide.
@@ -97,59 +86,51 @@ for qq = 1 : 1
    epsilon_0 = 8.854*10^-12;         % permittivity of vacuum (F/m)
    h    = 6.626 * 10^(-34);          % Planck's constant (J-sec)
    hbar = h/(2*pi);
-     
-%Load the parameter file
-%    fid = fopen(ParameterFilename,'r');
-%    while feof(fid) == 0
-%       line = fgetl(fid);
-%       eval(line);
-%    end
-%    fclose(fid);
-   
-%%   
-% % %%
+    % Load simulation parameters from CSV file
+    params = readtable(fullfile(fileparts(mfilename('fullpath')), 'Parameters.csv'));
+    if iscell(params.OnOff)
+        active = params(strcmpi(params.OnOff,'TRUE'), :);
+    else
+        active = params(params.OnOff == 1, :);
+    end
+    if isempty(active)
+        error('No active parameter set found in Parameters.csv');
+    end
+    lambda      = active.lambda(1)      * nm;
+    tau_0       = active.tau_0(1)       * fs;
+    PulseEnergy = active.PulseEnergy(1) * mJ;
+    R_capillary = active.R_capillary(1) * um;
+    L_capillary = active.L_capillary(1) * mm;
+    n_capillary = active.n_capillary(1);
+    a_capillary = active.a_capillary(1);
+    n_gas       = active.n_gas(1)       / cm^3;
+    dz          = active.dz(1)          * mm;
+    time_initial = active.time_initial(1) * fs;
+    time_final   = active.time_final(1)   * fs;
+    DeltaTime    = active.DeltaTime(1)    * fs;
+    Gas          = active.Gas{1};
+    q            = active.q(1);
+    dz2_token    = active.dz2{1};
+
+    % Ionization potentials for the selected gas
+    switch Gas
+        case 'Ar'
+            E_ion_0 = 15.7596 * eV;
+            E_ion_1 = 27.6297 * eV;
+            E_ion_2 = 40.74   * eV;
+            E_ion_3 = 59.81   * eV;
+            E_ion_4 = 75.02   * eV;
+        otherwise
+            error('Unsupported gas type: %s', Gas);
+    end
+    I_p = eval(active.I_p{1});
+    if ischar(dz2_token) || isstring(dz2_token)
+        dz2 = eval(dz2_token);
+    else
+        dz2 = dz2_token * mm;
+    end
+
     FigureSwitch = 1;
-
-% Laser parameters
-   lambda = 808 * nm;         % laser wavelength (m)
-   tau_0  = 35 * fs;          % initial pulse duration (1/e intensity) (unit: sec)
-   PulseEnergy = 16 * 10^-3;  % pulse energy (unit: J)
-
-% Capillary parameters
-   R_capillary = 75 * um;     % capillary radius (unit: m)
-   L_capillary = 10  * mm;    % capillary length (unit: m)
-   n_capillary = 1.4531;      % refractive index of the capillary
-                              % fused silica at 810 nm: 1.4531
-                              % bk7 at 810 nm: 1.51
-   a_capillary = 28;        % guiding loss coefficient (unit: 1/m)
-
-% gas target parameters
-   %n_gas = 2.37 * 10^16 / cm^3;  % gas density (unit: m^-3) 
-   %n_gas = 5.87 * 10^16 / cm^3;  % gas density (unit: m^-3) 
-   n_gas = 5 * 10^16 / cm^3;  % gas density (unit: m^-3) % 9.33 * 10^15  91-0.683
-
-% Calculation parameters
-   dz = 0.05 * mm;        % Spatial resolution of the ionization calculation (m)
-
-%---------------------------------------------------------------------------
-
-% Parameters for ATI heating calculation
-   time_initial    = -100 * fs;      % initial time (sec)
-   time_final      =  100 * fs;      % final time (sec)
-   DeltaTime       = 0.005 * fs;      % time interval (sec)
-
-% Ar ionization potential
-   E_ion_0    = 15.7596 * eV;          % ionization potential (J) ( 0  -> 1+ )
-   E_ion_1    = 27.6297 * eV;          % ionization potential (J) ( 1+ -> 2+ )
-   E_ion_2    = 40.74   * eV;          % ionization potential (J) ( 2+ -> 3+ )
-   E_ion_3    = 59.81   * eV;          % ionization potential (J) ( 3+ -> 4+ )
-   E_ion_4    = 75.02   * eV;          % ionization potential (J) ( 4+ -> 5+ )
-%---------------------------------------------------------------------------
-
-% Parameters for HHG
-   I_p = E_ion_1;   % ionizatiob potential of 
-   q   = 81 + 0*(2*qq - 50);           % harmonic order
-   dz2 = dz; %0.001 * mm;     % Spatial resolution of the HHG calculation (m)
 
 %---------------------------------------------------------------------------
 
