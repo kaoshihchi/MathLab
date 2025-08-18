@@ -120,6 +120,18 @@ for qq = 1 : 1
             E_ion_2 = 40.74   * eV;
             E_ion_3 = 59.81   * eV;
             E_ion_4 = 75.02   * eV;
+        case 'He'
+           E_ion_0    = 24.587 * eV;          % ionization potential (J) ( 0  -> 1+ )
+           E_ion_1    = 54.418 * eV;          % ionization potential (J) ( 1+ -> 2+ )
+           E_ion_2    = 1000   * eV;          % ionization potential (J) ( 2+ -> 3+ )
+           E_ion_3    = 1200   * eV;          % ionization potential (J) ( 3+ -> 4+ )
+           E_ion_4    = 2000   * eV;          % ionization potential (J) ( 4+ -> 5+ )
+        case 'Ne'
+           E_ion_0    = 21.5645 * eV;          % ionization potential (J) ( 0  -> 1+ )
+           E_ion_1    = 40.9630 * eV;          % ionization potential (J) ( 1+ -> 2+ )
+           E_ion_2    = 63.45   * eV;          % ionization potential (J) ( 2+ -> 3+ )
+           E_ion_3    = 97.12   * eV;          % ionization potential (J) ( 3+ -> 4+ )
+           E_ion_4    = 126.21  * eV;          % ionization potential (J) ( 4+ -> 5+ )
         otherwise
             error('Unsupported gas type: %s', Gas);
     end
