@@ -79,12 +79,29 @@ Phi1_s(mask1) = compute_phase_map(E1(mask1), q, I_p, omega_d, 'short');
 Phi2_l(mask2) = compute_phase_map(E2(mask2), q, I_p, omega_d, 'long');
 Phi2_s(mask2) = compute_phase_map(E2(mask2), q, I_p, omega_d, 'short');
 
-% Show dipole phase maps
+% ---- Show dipole phase maps ----
 figure; tiledlayout(2,2,'Padding','compact','TileSpacing','compact');
-nexttile; imagesc(Phi1_l); axis image; colorbar; title('Long \phi (input)');
-nexttile; imagesc(Phi1_s); axis image; colorbar; title('Short \phi (input)');
-nexttile; imagesc(Phi2_l); axis image; colorbar; title('Long \phi (output)');
-nexttile; imagesc(Phi2_s); axis image; colorbar; title('Short \phi (output)');
+
+nexttile;
+imagesc(Phi1_l); axis image; 
+cb = colorbar; cb.Label.String = 'Phase (rad)';
+title('\phi_{dipole\_long} (input)');
+
+nexttile;
+imagesc(Phi1_s); axis image; 
+cb = colorbar; cb.Label.String = 'Phase (rad)';
+title('\phi_{dipole\_short} (input)');
+
+nexttile;
+imagesc(Phi2_l); axis image; 
+cb = colorbar; cb.Label.String = 'Phase (rad)';
+title('\phi_{dipole\_long} (output)');
+
+nexttile;
+imagesc(Phi2_s); axis image; 
+cb = colorbar; cb.Label.String = 'Phase (rad)';
+title('\phi_{dipole\_short} (output)');
+
 
 %% -------- Local helper (vector-friendly) --------
 function phi_out = compute_phase_map(E_flat, q, I_p, omega_d, whichBranch)
