@@ -50,6 +50,16 @@
 close all
 clear all
 
+% Curve fitting controls
+maxIterations = 400;
+maxFunctionEvaluations = 800;
+maxTime = 120; % seconds
+downsampleFactor = 1;
+fitArgs = {'MaxIterations', maxIterations, ...
+           'MaxFunctionEvaluations', maxFunctionEvaluations, ...
+           'MaxTime', maxTime, ...
+           'Downsample', downsampleFactor};
+
 q_HHG = linspace(0,0,11);
 for qq = 1 : 1
 % Unit conversion
@@ -410,82 +420,78 @@ for qq = 1 : 1
                     
 
 % Curve fitting
-   % peak electric field (cfit object) E_peak_cfit(z)
-   % This is a cfit object, which can be used as a function:
-   %    E_peak = E_peak_cfit(z),
-   E_peak_cfit = fit(z',E_peak','exp1');   % unit: V/m 
-   
-   % peak laser intensity (cfit object) I_peak_cfit
-   % This is a cfit object, which can be used as a function:
-   %    I_peak = I_peak_cfit(z),
-   I_peak_cfit = fit(z',I_peak','exp1');   % unit: W/m^2
-   
-   % pulse duration (cfit object) tau_cfit
-   tau_cfit = fit(z',(tau/fs)','poly3');   % unit: fs
-   tau_fun = @(z) tau_cfit(z)*fs;         % unit: sec 
+   % peak electric field E_peak_cfit(z)
+   E_peak_cfit = timed_lsqcurvefit(z, E_peak, 'exp1', fitArgs{:});   % unit: V/m
 
-   % electron density (cfit object) N_e_cfit(z)
-   N_e_cfit = fit(z',N_e','poly3');        % unit: m^-3
-   
-   % accumulated GDD (cfit object) D_cfit(z)
-   D_cfit = fit(z',(D/fs^2)','poly3');     % unit: fs^2
-   D_fun = @(z) D_cfit(z)*fs^2;            % unit: s^2
-   
-   % plasma refractive index of the driving pulse (cfit object) n_plasma_cfit(z)
-   n_plasma_d_cfit = fit(z',n_plasma_d','poly3');
-   
-   % accumulated group delay (cfit object) C_cfit(z)
-   C_cfit = fit(z',(C/fs)','poly3');       % unit: fs
-   C_fun = @(z) C_cfit(z)*fs;              % unit: sec
-   
+   % peak laser intensity I_peak_cfit
+   I_peak_cfit = timed_lsqcurvefit(z, I_peak, 'exp1', fitArgs{:});   % unit: W/m^2
+
+   % pulse duration tau_cfit
+   tau_cfit = timed_lsqcurvefit(z, (tau/fs), 'poly3', fitArgs{:});   % unit: fs
+   tau_fun = @(zz) tau_cfit(zz)*fs;         % unit: sec
+
+   % electron density N_e_cfit(z)
+   N_e_cfit = timed_lsqcurvefit(z, N_e, 'poly3', fitArgs{:});        % unit: m^-3
+
+   % accumulated GDD D_cfit(z)
+   D_cfit = timed_lsqcurvefit(z, (D/fs^2), 'poly3', fitArgs{:});     % unit: fs^2
+   D_fun = @(zz) D_cfit(zz)*fs^2;            % unit: s^2
+
+   % plasma refractive index of the driving pulse n_plasma_cfit(z)
+   n_plasma_d_cfit = timed_lsqcurvefit(z, n_plasma_d, 'poly3', fitArgs{:});
+
+   % accumulated group delay C_cfit(z)
+   C_cfit = timed_lsqcurvefit(z, (C/fs), 'poly3', fitArgs{:});       % unit: fs
+   C_fun = @(zz) C_cfit(zz)*fs;              % unit: sec
+
    % total wavenumber of the driving pulse k_d_total_cfit(z)
-   k_d_total_cfit = fit(z',k_d_total','poly3');    % unit: 1/m
-   
+   k_d_total_cfit = timed_lsqcurvefit(z, k_d_total, 'poly3', fitArgs{:});    % unit: 1/m
+
    % accumulated phase shift of the driving pulse due to propagation (rad)
-   phi_d_prop_cfit = fit(z',phi_d_prop','poly3');    % unit: rad
+   phi_d_prop_cfit = timed_lsqcurvefit(z, phi_d_prop, 'poly3', fitArgs{:});    % unit: rad
 
    % phase velocity of the driving pulse v_d_cfit(z)
-   v_d_cfit = fit(z',v_d','poly3');    % unit: m/sec
+   v_d_cfit = timed_lsqcurvefit(z, v_d, 'poly3', fitArgs{:});    % unit: m/sec
 
    if FigureSwitch
       figure;
-      subplot(4,3,1),  plot(E_peak_cfit,z,E_peak),
+      subplot(4,3,1),  plot(z,E_peak_cfit(z),z,E_peak),
                        ylabel('E_{peak} (V/m)');
                        xlabel('position z (m)');
                        title('peak electric field');
-      subplot(4,3,4),  plot(I_peak_cfit,z,I_peak),
+      subplot(4,3,4),  plot(z,I_peak_cfit(z),z,I_peak),
                        ylabel('I_{peak} (W/m^2)');
                        xlabel('position z (m)');
                        title('peak intensity');
-      subplot(4,3,7),  plot(N_e_cfit,z,N_e),
+      subplot(4,3,7),  plot(z,N_e_cfit(z),z,N_e),
                        ylabel('N_e (m^{-3})');
                        xlabel('position z (m)');
                        title('electron density');
-      subplot(4,3,2),  plot(n_plasma_d_cfit,z,n_plasma_d),
+      subplot(4,3,2),  plot(z,n_plasma_d_cfit(z),z,n_plasma_d),
                        ylabel('n_{plasma}');
                        xlabel('position z (m)');
                        title('plasma refractive index');
-      subplot(4,3,5),  plot(D_cfit,z,D/fs^2),
+      subplot(4,3,5),  plot(z,D_cfit(z),z,D/fs^2),
                        ylabel('D (fs^2)');
                        xlabel('position z (m)');
                        title('group-delay-dispersion (GDD)');
-      subplot(4,3,8),  plot(tau_cfit,z,tau/fs),
+      subplot(4,3,8),  plot(z,tau_cfit(z),z,tau/fs),
                        ylabel('\tau (fs)');
                        xlabel('position z (m)');
                        title('pulse duration');
-      subplot(4,3,11),  plot(C_cfit,z,C/fs),
+      subplot(4,3,11),  plot(z,C_cfit(z),z,C/fs),
                        ylabel('C (fs)');
                        xlabel('position z (m)');
                        title('group delay');
-      subplot(4,3,3),  plot(k_d_total_cfit,z,k_d_total),
+      subplot(4,3,3),  plot(z,k_d_total_cfit(z),z,k_d_total),
                        ylabel('k_{d\_total}(z) (1/m)');
                        xlabel('position z (m)');
                        title('total wavenumber');
-      subplot(4,3,6),  plot(phi_d_prop_cfit,z,phi_d_prop),
+      subplot(4,3,6),  plot(z,phi_d_prop_cfit(z),z,phi_d_prop),
                        ylabel('\phi_{d\_prop}(z) (rad)');
                        xlabel('position z (m)');
                        title('accumulated phase due to propagation');
-      subplot(4,3,9),  plot(v_d_cfit,z,v_d),
+      subplot(4,3,9),  plot(z,v_d_cfit(z),z,v_d),
                        ylabel('v_d (m/sec)');
                        xlabel('position z (m)');
                        title('phase velocity');
@@ -530,23 +536,23 @@ for qq = 1 : 1
    alpha_s(N_dipole) = 2*alpha_s(N_dipole-1) - alpha_s(N_dipole-2);
    
 % curve fitting of the dipole phase and the alpha coefficient
-   Phi_dipole_l_cfit = fit(I_dipole',Phi_dipole_l','fourier3');  % unit: rad
-   Phi_dipole_s_cfit = fit(I_dipole',Phi_dipole_s','power2');    % unit: rad
-   alpha_l_cfit = fit(I_dipole',alpha_l','poly5');       % unit: m^2/W
-   alpha_s_cfit = fit(I_dipole',alpha_s','poly5');       % unit: m^2/W
+   Phi_dipole_l_cfit = timed_lsqcurvefit(I_dipole, Phi_dipole_l, 'fourier3', fitArgs{:});  % unit: rad
+   Phi_dipole_s_cfit = timed_lsqcurvefit(I_dipole, Phi_dipole_s, 'power2', fitArgs{:});    % unit: rad
+   alpha_l_cfit = timed_lsqcurvefit(I_dipole, alpha_l, 'poly5', fitArgs{:});       % unit: m^2/W
+   alpha_s_cfit = timed_lsqcurvefit(I_dipole, alpha_s, 'poly5', fitArgs{:});       % unit: m^2/W
    
    if FigureSwitch
    figure;
-   subplot(1,4,1), plot(Phi_dipole_l_cfit,I_dipole,Phi_dipole_l);
+   subplot(1,4,1), plot(I_dipole,Phi_dipole_l_cfit(I_dipole),I_dipole,Phi_dipole_l);
       xlabel('intensity (W/m^2)'), ylabel('\Phi_{dipole\_long} (rad)');
       title('long-trajectory dipole phase');
-   subplot(1,4,2), plot(Phi_dipole_s_cfit,I_dipole,Phi_dipole_s);
+   subplot(1,4,2), plot(I_dipole,Phi_dipole_s_cfit(I_dipole),I_dipole,Phi_dipole_s);
       xlabel('intensity (W/m^2)'), ylabel('\Phi_{dipole\_short} (rad)');
       title('short-trajectory dipole phase');
-   subplot(1,4,3), plot(alpha_l_cfit,I_dipole,alpha_l);
+   subplot(1,4,3), plot(I_dipole,alpha_l_cfit(I_dipole),I_dipole,alpha_l);
       xlabel('intensity (W/cm^2)'), ylabel('\alpha_{long} (m^2/W)');
       title('long-trajectory \alpha');
-   subplot(1,4,4), plot(alpha_s_cfit,I_dipole,alpha_s);
+   subplot(1,4,4), plot(I_dipole,alpha_s_cfit(I_dipole),I_dipole,alpha_s);
       xlabel('intensity (W/cm^2)'), ylabel('\alpha_{short} (m^2/W)');
       title('short-trajectory \alpha');
    sgtitle('Dipole phase calculation');
