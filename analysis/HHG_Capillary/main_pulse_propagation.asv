@@ -1,4 +1,4 @@
-
+clear all
     addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..', 'theory'));
 % MainPulsePropagation_HHG.m
 %  Part I:
@@ -97,7 +97,7 @@ for qq = 1 : 1
         error('No active parameter set found in Parameters.csv');
     end
     lambda      = active.lambda(1)      * nm;
-    tau_0       = active.tau_0(1)       * fs;
+    tau_0       = active.tau_0(1)       * fs; % FWHM
     PulseEnergy = active.PulseEnergy(1) * mJ;
     R_capillary = active.R_capillary(1) * um;
     L_capillary = active.L_capillary(1) * mm;
@@ -173,7 +173,7 @@ for qq = 1 : 1
 % Laser parameters
    omega_d = 2 * pi * c / lambda;    % laser angular frequency (rad/sec)
    k_0     = 2 * pi / lambda;        % laser wavenumber in vacuum (1/m)
-   I_peak_ini = PulseEnergy / (pi^1.5 * R_capillary^2 * tau_0);
+   I_peak_ini = 2 * PulseEnergy / (pi^1.5 * (0.64*R_capillary)^2 * tau_0); % 2P_0 / pi*r^2
                                            % laser peak intensity (W/m^2)
    E_peak_ini = sqrt(2*mu_0*c*I_peak_ini); % laser peak electric field (V/m)
    
@@ -299,7 +299,7 @@ for qq = 1 : 1
                          Energy_ATI(j) - Energy_IB(j) - Energy_TS(j) - ...
                          Energy_capillary(j);
       tau(j+1)    = sqrt(tau(j)^2 + D(j)^2/tau(j)^2);
-      I_peak(j+1) = LaserEnergy(j+1)/(pi^1.5 * R_capillary^2 * tau(j+1));
+      I_peak(j+1) = 2 * LaserEnergy(j+1)/(pi^1.5 * (0.64*R_capillary)^2 * tau(j+1));
       E_peak(j+1) = sqrt(2*mu_0*c*I_peak(j+1));      % peak electric field (V/m)
       E_t = ElectricField_d(time,E_peak(j+1),omega_d,tau_0,D(j),0,0);
       ATI_result  = TunnelingIonizationRate_Linear...
@@ -770,15 +770,19 @@ for ii = 150:150
    E_t2_qwf = zeros(N,1);
    for jj = 1:N
         E_t2(jj,:) = ElectricField_d(time+C_fun(z2(jj))-C_fun(z2(1)),E_peak(jj),omega_d,tau_0,D(jj)-D(1),C_fun(z2(jj))-C_fun(z2(1)),0); 
+        % local driving field vs. local time at position z2(jj).
         % E_t      = ElectricField_d(time,                           E_peak(1) ,omega_d,tau_0,0         ,0                         ,0);
         ionizationResult = TunnelingIonizationRate_Linear2((E_t2(jj,:)),omega_d,time+C_fun(z2(jj)),E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,FigureSwitch);
+        % shift the time axis by the accumulated group delay C(z)
         ionizationResult = ionizationResult';
+        % Returns arrays vs. time
         n_e(jj,:) = ionizationResult(1,:);        
         n_0(jj,:) = ionizationResult(2,:);
         n_1(jj,:) = ionizationResult(3,:);
         n_2(jj,:) = ionizationResult(4,:);
         n_3(jj,:) = ionizationResult(5,:);        
         delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
+        % round(0.5*size(time,2)) is the center index of your time array (your “reference”)
         n_1_qwf(jj) = n_1(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_2_qwf(jj) = n_2(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_3_qwf(jj) = n_3(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
@@ -789,6 +793,7 @@ for ii = 150:150
 % neutral ~ 1+
     W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
     n_source = n_gas .*W_n_1_qwf;
+    % ignores depletion/populations. It assumes every atom is in the required initial state, which is wrong if earlier (t < 0) intensity already ionized them.
     E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
     % short-trajectory emission
     E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
@@ -832,11 +837,11 @@ for ii = 150:150
       title('phase of the driving pulse')
    subplot(5,1,4), plot(z2/mm,n_source*1E-6);
       xlabel('z (mm)');
-      ylabel('Source (cm^{-3})');
+      ylabel('Source Rate(Hz cm^{-3})');
       title('Source');
    subplot(5,1,5), plot(z2/mm,W_n_1_qwf);
       xlabel('z (mm)');
-      ylabel('Ionization');
+      ylabel('Ionization rate (Hz)');
       title('Ionization rate');
  %%  
    figure
