@@ -1,3 +1,5 @@
+% This gives you the rate at which electrons tunnel through the potential barrier per unit time when exposed to a static or slowly varying field.
+
 function result = StaticIonizationRate(E_ion, EField)
 
    global E_H

@@ -17,7 +17,7 @@ tau_s    = tau_fs * 1e-15;
 E1_mJ = 8.3;      E1_J = E1_mJ * 1e-3; % input.tiff
 E2_mJ = 7.6;    E2_J = E2_mJ * 1e-3; % output.tiff
 
-q         = 47;                        % harmonic order
+q         = 45;                        % harmonic order
 lambda_nm = 808;                       % nm
 omega_d   = 2*pi*c/(lambda_nm*1e-9);
 I_p_eV    = 15.7596;                   % eV (Ar)

@@ -1,5 +1,5 @@
-function main_pulse_propagation
-    addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'theory'));
+clear all
+    addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..', 'theory'));
 % MainPulsePropagation_HHG.m
 %  Part I:
 %    Calculate the main beam loss propagated in a capillary waveguide.
@@ -97,7 +97,7 @@ for qq = 1 : 1
         error('No active parameter set found in Parameters.csv');
     end
     lambda      = active.lambda(1)      * nm;
-    tau_0       = active.tau_0(1)       * fs;
+    tau_0       = active.tau_0(1)       * fs; % FWHM
     PulseEnergy = active.PulseEnergy(1) * mJ;
     R_capillary = active.R_capillary(1) * um;
     L_capillary = active.L_capillary(1) * mm;
@@ -173,7 +173,7 @@ for qq = 1 : 1
 % Laser parameters
    omega_d = 2 * pi * c / lambda;    % laser angular frequency (rad/sec)
    k_0     = 2 * pi / lambda;        % laser wavenumber in vacuum (1/m)
-   I_peak_ini = PulseEnergy / (pi^1.5 * R_capillary^2 * tau_0);
+   I_peak_ini = 2 * PulseEnergy / (pi^1.5 * (0.64*R_capillary)^2 * tau_0); % 2P_0 / pi*r^2
                                            % laser peak intensity (W/m^2)
    E_peak_ini = sqrt(2*mu_0*c*I_peak_ini); % laser peak electric field (V/m)
    
@@ -299,7 +299,7 @@ for qq = 1 : 1
                          Energy_ATI(j) - Energy_IB(j) - Energy_TS(j) - ...
                          Energy_capillary(j);
       tau(j+1)    = sqrt(tau(j)^2 + D(j)^2/tau(j)^2);
-      I_peak(j+1) = LaserEnergy(j+1)/(pi^1.5 * R_capillary^2 * tau(j+1));
+      I_peak(j+1) = 2 * LaserEnergy(j+1)/(pi^1.5 * (0.64*R_capillary)^2 * tau(j+1));
       E_peak(j+1) = sqrt(2*mu_0*c*I_peak(j+1));      % peak electric field (V/m)
       E_t = ElectricField_d(time,E_peak(j+1),omega_d,tau_0,D(j),0,0);
       ATI_result  = TunnelingIonizationRate_Linear...
@@ -535,23 +535,39 @@ for qq = 1 : 1
    alpha_s(N_dipole) = 2*alpha_s(N_dipole-1) - alpha_s(N_dipole-2);
    
 % curve fitting of the dipole phase and the alpha coefficient
-   Phi_dipole_l_cfit = fit(I_dipole',Phi_dipole_l','fourier3');  % unit: rad
-   Phi_dipole_s_cfit = fit(I_dipole',Phi_dipole_s','power2');    % unit: rad
-   alpha_l_cfit = fit(I_dipole',alpha_l','poly5');       % unit: m^2/W
-   alpha_s_cfit = fit(I_dipole',alpha_s','poly5');       % unit: m^2/W
+   %I_dipole_l = I_dipole; 
+   Phi_dipole_l_temp = Phi_dipole_l; 
+   [I_dipole_l, Phi_dipole_l] = cleanNAN(I_dipole, Phi_dipole_l_temp); 
+
+   %I_dipole_s = I_dipole; 
+   Phi_dipole_s_temp = Phi_dipole_s; 
+   [I_dipole_s, Phi_dipole_s] = cleanNAN(I_dipole, Phi_dipole_s_temp); 
+
+   Phi_dipole_l_cfit = fit(I_dipole_l',Phi_dipole_l','fourier3');  % unit: rad
+   Phi_dipole_s_cfit = fit(I_dipole_s',Phi_dipole_s','power2');    % unit: rad
+   
+   alpha_l_temp = alpha_l; 
+   [I_dipole_l, alpha_l] = cleanNAN(I_dipole, alpha_l_temp); 
+
+   alpha_s_temp = alpha_s; 
+   [I_dipole_s, alpha_s] = cleanNAN(I_dipole, alpha_s_temp); 
+   
+   
+   alpha_l_cfit = fit(I_dipole_s',alpha_l','poly5');       % unit: m^2/W
+   alpha_s_cfit = fit(I_dipole_l',alpha_s','poly5');       % unit: m^2/W
    
    if FigureSwitch
    figure;
-   subplot(1,4,1), plot(Phi_dipole_l_cfit,I_dipole,Phi_dipole_l);
+   subplot(1,4,1), plot(Phi_dipole_l_cfit,I_dipole_l,Phi_dipole_l);
       xlabel('intensity (W/m^2)'), ylabel('\Phi_{dipole\_long} (rad)');
       title('long-trajectory dipole phase');
-   subplot(1,4,2), plot(Phi_dipole_s_cfit,I_dipole,Phi_dipole_s);
+   subplot(1,4,2), plot(Phi_dipole_s_cfit,I_dipole_s,Phi_dipole_s);
       xlabel('intensity (W/m^2)'), ylabel('\Phi_{dipole\_short} (rad)');
       title('short-trajectory dipole phase');
-   subplot(1,4,3), plot(alpha_l_cfit,I_dipole,alpha_l);
+   subplot(1,4,3), plot(alpha_l_cfit,I_dipole_l,alpha_l);
       xlabel('intensity (W/cm^2)'), ylabel('\alpha_{long} (m^2/W)');
       title('long-trajectory \alpha');
-   subplot(1,4,4), plot(alpha_s_cfit,I_dipole,alpha_s);
+   subplot(1,4,4), plot(alpha_s_cfit,I_dipole_s,alpha_s);
       xlabel('intensity (W/cm^2)'), ylabel('\alpha_{short} (m^2/W)');
       title('short-trajectory \alpha');
    sgtitle('Dipole phase calculation');
@@ -770,12 +786,19 @@ for ii = 150:150
    end
   
  %%
-  % 1+ ~ 2+
-    W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
-    n_source = n_gas.*n_1_qwf'.*W_n_1_qwf;
+% neutral ~ 1+
+    W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
+    n_source = n_gas .*W_n_1_qwf;
     E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
     % short-trajectory emission
     E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
+
+  % % 1+ ~ 2+
+  %   W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
+  %   n_source = n_gas.*n_1_qwf'.*W_n_1_qwf;
+  %   E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
+  %   % short-trajectory emission
+  %   E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
    
 %    % 2+ ~ 3+
 %    W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
@@ -792,21 +815,29 @@ for ii = 150:150
    E_q_PhaseMatched_final_max = max(E_q_PhaseMatched_final); %max(E_q_PhaseMatched_final);
 %%   
    figure; % driving field check
-   subplot(3,1,1), plot(z2/mm,abs(E_d2_dwf),z2/mm,abs(E_d2_qwf),z/mm,E_peak);
+   subplot(5,1,1), plot(z2/mm,abs(E_d2_dwf),z2/mm,abs(E_d2_qwf),z/mm,E_peak);
       xlabel('z (mm)');
       ylabel('|E| (V/m)');
       legend('fixed d-wf','fixed q-wf','E_{peak}','Location','SouthWest');
       title('driving field amplitude')
-   subplot(3,1,2), plot(z2/mm,(t2_dwf-(C_fun(z2)-C_fun(0))')/fs,z2/mm,(t2_qwf-(C_fun(z2)-C_fun(0))')/fs);
+   subplot(5,1,2), plot(z2/mm,(t2_dwf-(C_fun(z2)-C_fun(0))')/fs,z2/mm,(t2_qwf-(C_fun(z2)-C_fun(0))')/fs);
       xlabel('z (mm)');
       ylabel('\Delta t (fs)');
       legend('t2_{dwf} - C(z) (fixed d-wf)','t2_{qwf} - C(z) (fixed q-wf)','Location','SouthWest');
       title('time difference')
-   subplot(3,1,3), plot(z2/mm,Phi_d2_dwf,z2/mm,Phi_d2_qwf);
+   subplot(5,1,3), plot(z2/mm,Phi_d2_dwf,z2/mm,Phi_d2_qwf);
       xlabel('z (mm)');
       ylabel('\Phi_{d2} (rad)');
       legend('fixed d-wf','fixed q-wf','Location','SouthWest');
       title('phase of the driving pulse')
+   subplot(5,1,4), plot(z2/mm,n_source*1E-6);
+      xlabel('z (mm)');
+      ylabel('Source Rate(Hz cm^{-3})');
+      title('Source');
+   subplot(5,1,5), plot(z2/mm,W_n_1_qwf);
+      xlabel('z (mm)');
+      ylabel('Ionization rate (Hz)');
+      title('Ionization rate');
  %%  
    figure
    subplot(2,2,1)
@@ -935,4 +966,4 @@ end
    fclose(fid_output);   
 %-------------------------------------------------------------------------------------------
 
-end
+
