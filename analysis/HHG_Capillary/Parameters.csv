@@ -1,2 +1,2 @@
 OnOff,lambda,tau_0,PulseEnergy,R_capillary,L_capillary,n_capillary,a_capillary,n_gas,dz,time_initial,time_final,DeltaTime,Gas,I_p,q,dz2
-1,808,33.3,8.3,100,8,1.4531,87.5,2.40E+17,0.05,-100,100,0.005,Ar,E_ion_0,45,dz
+1,808,40,8.3,100,8,1.4531,87.5,2.40E+17,0.05,-100,100,0.005,Ar,E_ion_2,45,dz

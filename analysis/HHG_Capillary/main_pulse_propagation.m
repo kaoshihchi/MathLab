@@ -144,32 +144,6 @@ for qq = 1 : 1
 
     FigureSwitch = 1;
 
-%---------------------------------------------------------------------------
-
-
-% Note: ionization potential
-% He ionization potential
-   % E_ion_0    = 24.587 * eV;          % ionization potential (J) ( 0  -> 1+ )
-   % E_ion_1    = 54.418 * eV;          % ionization potential (J) ( 1+ -> 2+ )
-   % E_ion_2    = 1000   * eV;          % ionization potential (J) ( 2+ -> 3+ )
-   % E_ion_3    = 1200   * eV;          % ionization potential (J) ( 3+ -> 4+ )
-   % E_ion_4    = 2000   * eV;          % ionization potential (J) ( 4+ -> 5+ )
-
-% Ar ionization potential
-   % E_ion_0    = 15.7596 * eV;          % ionization potential (J) ( 0  -> 1+ )
-   % E_ion_1    = 27.6297 * eV;          % ionization potential (J) ( 1+ -> 2+ )
-   % E_ion_2    = 40.74   * eV;          % ionization potential (J) ( 2+ -> 3+ )
-   % E_ion_3    = 59.81   * eV;          % ionization potential (J) ( 3+ -> 4+ )
-   % E_ion_4    = 75.02   * eV;          % ionization potential (J) ( 4+ -> 5+ )
-
-% Ne ionization potential
-   % E_ion_0    = 21.5645 * eV;          % ionization potential (J) ( 0  -> 1+ )
-   % E_ion_1    = 40.9630 * eV;          % ionization potential (J) ( 1+ -> 2+ )
-   % E_ion_2    = 63.45   * eV;          % ionization potential (J) ( 2+ -> 3+ )
-   % E_ion_3    = 97.12   * eV;          % ionization potential (J) ( 3+ -> 4+ )
-   % E_ion_4    = 126.21  * eV;          % ionization potential (J) ( 4+ -> 5+ )
-%-------------------------------------------------------------------------------------------
-
 % Laser parameters
    omega_d = 2 * pi * c / lambda;    % laser angular frequency (rad/sec)
    k_0     = 2 * pi / lambda;        % laser wavenumber in vacuum (1/m)
@@ -963,5 +937,4 @@ end
    fprintf(fid_output,'%d     %6.9f           %6.9f        \r\n', result_HHG_final);
    fclose(fid_output);   
 %-------------------------------------------------------------------------------------------
-
 
