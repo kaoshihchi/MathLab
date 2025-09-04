@@ -303,6 +303,38 @@ for qq = 1 : 1
       sgtitle('ionization at z = L');
    end
    
+% Calibrate theoretical plasma density with experimental average
+%
+   % Build model electron density from ATI theory
+   N_e_th = n_gas .* Z_ion;              % 1/m^3
+   
+   % Model average over the full capillary
+   Ne_th_avg = trapz(z, N_e_th) / L_capillary;
+
+   % Experimental average (cm^-3 -> m^-3)
+   Ne_exp_avg = 2.4e17 * 1e6;
+
+   % Scalar factor from averages (>= 0)
+   f_avg = max(0, Ne_exp_avg / max(Ne_th_avg, eps));
+
+   % Apply factor to average charge and rebuild calibrated density
+   Z_ion = max(0, f_avg .* Z_ion);
+   N_e   = n_gas .* Z_ion;           % calibrated electron density
+
+   % Recompute plasma dependent quantities with calibrated density
+   GVD = arrayfun(@(ne) GroupVelocityDispersion(omega_d, ne), N_e);
+   n_plasma_d = sqrt(1 - (q_e^2 .* N_e) ./ (epsilon_0 * m_e * omega_d^2));
+   k_d_plasma = k_0 .* n_plasma_d;
+   k_d_total  = k_d_plasma + k_d_capillary;
+   phi_d_prop = cumsum(k_d_total * dz);
+   v_d        = omega_d ./ k_d_total;
+   C = zeros(1, N);
+   for j = 1:N-1
+       C(j+1) = C(j) + dz/(c*n_plasma_d(j+1)) + (u_11^2*c)/(2*R_capillary^2*omega_d^2)*dz;
+   end
+   D = cumsum((GVD + GVD_capillary) * dz);
+
+
 % Export results (SI units)
    result_SI_temp(1,:) = z;            % position (m)
    result_SI_temp(2,:) = LaserEnergy;  % laser pulse energy (J)
@@ -937,5 +969,4 @@ end
    fprintf(fid_output,'%d     %6.9f           %6.9f        \r\n', result_HHG_final);
    fclose(fid_output);   
 %-------------------------------------------------------------------------------------------
-
 
