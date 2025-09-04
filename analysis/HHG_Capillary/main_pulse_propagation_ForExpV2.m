@@ -112,6 +112,7 @@ for qq = 1 : 1
     q            = active.q(1);
     dz2_token    = active.dz2{1};
     Ne_exp_avg   = active.Ne_exp_avg(1) * 1E6;    % Experiment (cm^-3)
+    t_shift      = active.t_shift(1) * fs;             % (fs)
 
     % Ionization potentials for the selected gas
     switch Gas
@@ -304,6 +305,72 @@ for qq = 1 : 1
       sgtitle('ionization at z = L');
    end
    
+% --------------------------------------------------------------------
+%% --- Peak-slice calibration pass (build f_peak from peak-time plasma) ---
+
+% We will build a local time-shifted waveform at each z and use the
+% time-resolved ionization to sample the electron density at the pulse peak.
+
+Ne_peak = zeros(1, N);            % electron density at the local peak time
+for j = 1:N
+    % Build time-shifted waveform so the local envelope center is near the
+    % center of 'time'. (Use same D and C you computed.)
+    E_t_loc = ElectricField_d( ...
+        time + (C(j) - C(1)), ...                % align local group delay
+        E_peak(j), omega_d, tau_0, ...
+        D(j) - D(1), (C(j) - C(1)), 0);
+
+    % Get time-resolved ionization (populations and ne vs time)
+    % NOTE: you already use TunnelingIonizationRate_Linear2 later in Part II.
+    ion_res = TunnelingIonizationRate_Linear2( ...
+        E_t_loc, omega_d, time + C(j), ...
+        E_ion_0, E_ion_1, E_ion_2, E_ion_3, E_ion_4, 0);  % FigureSwitch=0
+
+    ion_res = ion_res.';         % make it  (rows = species, cols = time)
+    ne_t    = ion_res(1, :);     % electron density (arb. to your code’s scale)
+
+    % Find pulse-peak time index for this z (maximize |E|)
+    [~, idx_peak] = max(abs(E_t_loc));
+
+    % Peak-time electron density (convert to physical using uniform gas)
+    % Your code uses Z_ion as "relative e- density" and N_e = n_gas * Z_ion.
+    Ne_peak(j) = n_gas * ne_t(idx_peak);
+end
+
+% Average along the capillary to obtain the model's peak-slice mean density
+Ne_th_avg_peak = trapz(z, Ne_peak) / L_capillary;   % [m^-3]
+
+% Experimental average (already in [m^-3] in your code as Ne_exp_avg)
+% Build the calibration factor from the peak-slice model:
+f_peak = max(0, Ne_exp_avg / max(Ne_th_avg_peak, eps));
+
+% ----- Apply this peak-based factor to your previously computed Z_ion -----
+Z_ion = max(0, f_peak .* Z_ion);
+N_e   = n_gas .* Z_ion;
+
+% Recompute all plasma-dependent propagation terms with the calibrated N_e
+GVD        = arrayfun(@(ne) GroupVelocityDispersion(omega_d, ne), N_e);
+n_plasma_d = sqrt(1 - (q_e^2 .* N_e) ./ (epsilon_0 * m_e * omega_d^2));
+k_d_plasma = k_0 .* n_plasma_d;
+
+% Waveguide term was constant in your model (R fixed):
+% k_d_capillary is already defined earlier (scalar or vector, as you prefer)
+k_d_total  = k_d_plasma + k_d_capillary;
+phi_d_prop = cumsum(k_d_total * dz);
+v_d        = omega_d ./ k_d_total;
+
+% Accumulated group delay and GDD with recalibrated plasma contribution
+C = zeros(1, N);
+for j = 1:N-1
+    C(j+1) = C(j) + dz/(c*n_plasma_d(j+1)) + (u_11^2*c)/(2*R_capillary^2*omega_d^2)*dz;
+end
+D = cumsum((GVD + GVD_capillary) * dz);
+
+% (Optional) keep track for debugging:
+fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
+
+
+
 % Calibrate theoretical plasma density with experimental average
 %---------------------------------------------------------------------
    % Build model electron density from ATI theory
@@ -334,8 +401,6 @@ for qq = 1 : 1
        C(j+1) = C(j) + dz/(c*n_plasma_d(j+1)) + (u_11^2*c)/(2*R_capillary^2*omega_d^2)*dz;
    end
    D = cumsum((GVD + GVD_capillary) * dz);
-   
-   mean(f_avg)
 %---------------------------------------------------------------------
 
 % Export results (SI units)
@@ -717,6 +782,11 @@ for qq = 1 : 1
 
 
 % index i for traing different wavefront 
+% ---- Safe timing shift used ONLY in Part II (HHG observer) ----
+% Negative t_shift => waveform earlier. Adds to C so (t-C) is unchanged.
+ElectricField_shifted = @(t,Epk,om,tau0,D,C,phi) ...
+    ElectricField_d(t, Epk, om, tau0, D, C + t_shift, phi);
+
 
 for ii = 150:150  
 % Trace a fixed wavefront of the driving pulse
@@ -738,15 +808,18 @@ for ii = 150:150
    
    for j = 1:N2
       % Generate the driving field E_d2 at (z2,t=t_d2(z2))
-      E_d2_dwf(j) = ElectricField_d(t2_dwf(j),E_peak_cfit(z2(j)),omega_d,...
-                                tau_0,D_fun(z2(j))-D_fun(z2(1)),...
-                                C_fun(z2(j))-C_fun(z2(1)),...
-                                phi_d_prop_cfit(z2(j))-phi_d_prop_cfit(z2(1)));
+        E_d2_dwf(j) = ElectricField_shifted( ...
+            t2_dwf(j), E_peak_cfit(z2(j)), omega_d, ...
+            tau_0, D_fun(z2(j)) - D_fun(z2(1)), ...
+            C_fun(z2(j)) - C_fun(z2(1)), ...
+            phi_d_prop_cfit(z2(j)) - phi_d_prop_cfit(z2(1)));
+
       % Generate the driving field E_d2 at (z2,t=t_q(z2))
-      E_d2_qwf(j) = ElectricField_d(t2_qwf(j),E_peak_cfit(z2(j)),omega_d,...
-                                tau_0,D_fun(z2(j))-D_fun(z2(1)),...
-                                C_fun(z2(j))-C_fun(z2(1)),...
-                                phi_d_prop_cfit(z2(j))-phi_d_prop_cfit(z2(1)));
+          E_d2_qwf(j) = ElectricField_shifted( ...
+        t2_qwf(j), E_peak_cfit(z2(j)), omega_d, ...
+        tau_0, D_fun(z2(j)) - D_fun(z2(1)), ...
+        C_fun(z2(j)) - C_fun(z2(1)), ...
+        phi_d_prop_cfit(z2(j)) - phi_d_prop_cfit(z2(1)));
 
    end
    I_d2_dwf = abs(E_d2_dwf).^2/(2*mu_0*c);    % driving intensity with fixed driving wavefront (W/m^2)
@@ -755,6 +828,84 @@ for ii = 150:150
    Phi_d2_qwf = angle(E_d2_qwf);   % driving field phase with fixed harmonic wavefront
 
    
+
+% % ---------- Wavefront-sampled populations & density (insert here) ----------
+% % Preallocate (z2 grid)
+% n_0_qwf = zeros(N2,1);
+% n_1_qwf = zeros(N2,1);
+% n_2_qwf = zeros(N2,1);
+% n_3_qwf = zeros(N2,1);
+% n_e_qwf = zeros(N2,1);     % electron fraction at q-wavefront time
+% E_t2_qwf = zeros(N2,1);
+% delta_tw  = zeros(N2,1);
+% 
+% % Time series scratch (single row reused to avoid big N-by-Nt array)
+% Nt = numel(time);
+% E_t_row = zeros(1,Nt);
+% 
+% for jj = 1:N2
+%     % Build the local driving field vs time at position z2(jj) (peak-frame),
+%     % using your fitted propagation terms on z2:
+%     E_t_row(:) = ElectricField_d( ...
+%         time + (C_fun(z2(jj)) - C_fun(z2(1))), ...
+%         E_peak_cfit(z2(jj)), omega_d, tau_0, ...
+%         D_fun(z2(jj)) - D_fun(z2(1)), ...
+%         C_fun(z2(jj)) - C_fun(z2(1)), 0);
+% 
+%     % Time-resolved ionization populations at z2(jj)
+%     ion_row = TunnelingIonizationRate_Linear2( ...
+%         E_t_row, omega_d, time + C_fun(z2(jj)), ...
+%         E_ion_0, E_ion_1, E_ion_2, E_ion_3, E_ion_4, 0).';  % rows: [n_e; n_0; n_1; n_2; n_3; ...]
+% 
+%     % Wavefront time index (align the observer time with q-wavefront, incl. t_shift)
+%     delta_tw(jj) = (C_fun(z2(jj)) - C_fun(z2(1)) + t_shift) - t2_qwf(jj);
+%     idx = round(0.5*Nt) - round(delta_tw(jj)/DeltaTime);
+%     idx = max(1, min(Nt, idx));  % safe clipping
+% 
+%     % Pick populations at the q-wavefront time
+%     n_e_qwf(jj) = ion_row(1, idx);
+%     n_0_qwf(jj) = ion_row(2, idx);
+%     n_1_qwf(jj) = ion_row(3, idx);
+%     n_2_qwf(jj) = ion_row(4, idx);
+%     n_3_qwf(jj) = ion_row(5, idx);
+% 
+%     % Field sample at the same time (if needed for checks)
+%     E_t2_qwf(jj) = E_t_row(idx);
+% end
+% 
+% % Physical electron density at the wavefront
+% N_e_qwf = n_gas .* n_e_qwf;   % [1/m^3]
+% N_e_qwf = f_avg .* f_peak .* N_e_qwf;   % calibrated to experiment
+% % --------------------------------------------------------------------------
+
+% ===== Intensity-ratio wavefront density model =====
+% Calibrated peak density profile on z2 (already includes f_peak and f_avg
+% because N_e was fitted after calibration):
+N_e_peak_z2 = N_e_cfit(z2)';         % [1/m^3] calibrated peak density
+
+% Intensities:
+I_peak_z2   = I_peak_cfit(z2)';      % [W/m^2] peak intensity along z2
+I_qwf       = abs(E_d2_qwf).^2 / (2*mu_0*c);   % [W/m^2] already computed
+
+% Ratio r \in [0,1]
+r = I_qwf ./ max(I_peak_z2, eps);
+r = max(0, min(1, r));
+
+% Nonlinearity (tunable). Start with 1.5; use 1.0 if you want linear scaling.
+gamma = 1;
+
+% Wavefront electron density (heuristic):
+N_e_qwf = N_e_peak_z2 .* (r.^gamma);   % [1/m^3]
+
+% If (for any reason) you prefer to explicitly carry the same calibration
+% constants here instead of relying on N_e_cfit being calibrated, you can use:
+% Ne_qwf = (f_avg * f_peak) .* (n_gas .* Z_ion_cfit(z2)') .* (r.^gamma);
+% (only if you have a Z_ion fit; otherwise the first line is preferred)
+% ================================================
+
+
+
+
 % phase of the local harmonic field
 % Trace a fixed harmonic wavefront
    % long-trajectory emission
@@ -787,7 +938,8 @@ for ii = 150:150
         n_1(jj,:) = ionizationResult(3,:);
         n_2(jj,:) = ionizationResult(4,:);
         n_3(jj,:) = ionizationResult(5,:);        
-        delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
+        % delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
+        delta_tw(jj) = (C_fun(z2(jj)) - C_fun(z2(1)) + t_shift) - t2_qwf(jj)
         n_0_qwf(jj) = n_0(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_1_qwf(jj) = n_1(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_2_qwf(jj) = n_2(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
@@ -797,19 +949,20 @@ for ii = 150:150
   
  %%
 % neutral ~ 1+
-    switch I_p
-        case E_ion_0                % neutral → 1+
-            W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
-            n_source  = n_gas .* n_0_qwf .* W_n_1_qwf;
-        case E_ion_1                % 1+ → 2+
-            W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
-            n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
-        case E_ion_2                % 2+ → 3+
-            W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
-            n_source  = n_gas .* n_2_qwf' .* W_n_1_qwf;
-        otherwise
-            error('Unsupported ionization potential I_p = %g', I_p);
+   switch I_p
+    case E_ion_0
+        W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
+        n_source  = n_gas .* n_0_qwf .* W_n_1_qwf;
+    case E_ion_1
+        W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
+        n_source  = n_gas .* n_1_qwf .* W_n_1_qwf;
+    case E_ion_2
+        W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
+        n_source  = n_gas .* n_2_qwf .* W_n_1_qwf;
+    otherwise
+        error('Unsupported ionization potential I_p = %g', I_p);
     end
+
     E_LH_l = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
     % short-trajectory emission
     E_LH_s = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
@@ -827,11 +980,13 @@ for ii = 150:150
       ylabel('|E| (V/m)');
       legend('fixed d-wf','fixed q-wf','E_{peak}','Location','SouthWest');
       title('driving field amplitude')
-   subplot(5,1,2), plot(z2/mm,(t2_dwf-(C_fun(z2)-C_fun(0))')/fs,z2/mm,(t2_qwf-(C_fun(z2)-C_fun(0))')/fs);
-      xlabel('z (mm)');
-      ylabel('\Delta t (fs)');
-      legend('t2_{dwf} - C(z) (fixed d-wf)','t2_{qwf} - C(z) (fixed q-wf)','Location','SouthWest');
-      title('time difference')
+   subplot(5,1,2)
+        plot(z2/mm, (t2_dwf - (C_fun(z2)'-C_fun(0)' + t_shift))/fs, ...
+             z2/mm, (t2_qwf - (C_fun(z2)'-C_fun(0)' + t_shift))/fs, 'LineWidth',1.2);
+        xlabel('z (mm)');
+        ylabel('\Delta t (fs)');
+        legend('t2_{dwf} - C(z)','t2_{qwf} - C(z)','Location','SouthWest');
+        title('time difference');
    subplot(5,1,3), plot(z2/mm,Phi_d2_dwf,z2/mm,Phi_d2_qwf);
       xlabel('z (mm)');
       ylabel('\Phi_{d2} (rad)');
@@ -972,4 +1127,87 @@ end
    fprintf(fid_output,'%d     %6.9f           %6.9f        \r\n', result_HHG_final);
    fclose(fid_output);   
 %-------------------------------------------------------------------------------------------
+% ================= Wavefront diagnostics vs z (using shifted observer) =================
+z2_mm = z2 / mm;
 
+% 1) Intensity at wavefront (harmonic-frame)
+I_qwf = abs(E_d2_qwf).^2 / (2*mu_0*c);          % [W/m^2]
+
+% 2) Plasma density along z AT THE WAVEFRONT (already t_shift-aligned above)
+%    (Keep Ne_z2 only if you want to compare to the smooth fit)
+% Ne_z2 = N_e_cfit(z2)';                        % [1/m^3] (fit, not used below)
+Ne_qwf = N_e_qwf;                                % [1/m^3] (from your wavefront sampling)
+
+% --- Rebuild plasma refractive indices and phase using the wavefront density ---
+% Refractive index at driving and harmonic frequencies (using Ne_qwf)
+n_plasma_d_qwf = sqrt(1 - (q_e^2 .* Ne_qwf) ./ (epsilon_0 * m_e * omega_d^2));
+n_plasma_q_qwf = sqrt(1 - (q_e^2 .* Ne_qwf) ./ (epsilon_0 * m_e * (q*omega_d)^2));
+
+% Wavenumbers in plasma
+k_d_plasma_qwf = k_0      .* n_plasma_d_qwf;          % [1/m]
+k_q_plasma_qwf = (q*k_0)  .* n_plasma_q_qwf;          % [1/m]
+
+% Waveguide terms (keep the same as you used for diagnostics elsewhere)
+% k_d_capillary and k_q_capillary were defined earlier; reuse them here.
+% If k_d_capillary is a scalar, broadcast it:
+k_d_total_qwf = k_d_plasma_qwf + k_d_capillary;       % [1/m]
+k_q_total_qwf = k_q_plasma_qwf + k_q_capillary;       % [1/m]
+
+% Plasma-only mismatch and accumulated plasma phase at the wavefront
+Delta_k_plasma_qwf = q*k_d_plasma_qwf - k_q_plasma_qwf;     % [1/m]
+Phi_plasma_qwf     = cumsum(Delta_k_plasma_qwf) * dz2;       % [rad]
+
+% Dipole phase (long) evaluated at the wavefront intensity
+Phi_dip_long       = Phi_dipole_l_cfit(I_qwf)';              % [rad]
+Phi_dip_long_rel   = Phi_dip_long - Phi_dip_long(1);
+
+% Total phase (long) using wavefront plasma phase + same capillary + dipole
+Phi_total_long_qwf     = Phi_plasma_qwf + Delta_Phi_capillary + Phi_dip_long;
+Phi_total_long_qwf_rel = Phi_total_long_qwf - Phi_total_long_qwf(1);
+
+% 4) HHG source and 5) Ionization rate at the wavefront (already qwf-based)
+Source_HHG = n_source;               % [arb./s]
+W_qwf      = W_n_1_qwf;              % [1/s]
+
+% 6) Accumulated HHG (long) magnitude (normalized)
+Eacc_long       = abs(E_HHG_l);
+Eacc_long_norm  = Eacc_long / (max(Eacc_long) + eps);
+
+% ---------- Plots ----------
+figure('Name','Wavefront variation vs z','Color','w');
+tiledlayout(4,2, 'Padding','compact','TileSpacing','compact');
+
+% 1. Intensity (q-wf)
+nexttile; plot(z2_mm, I_qwf*1e-4, 'LineWidth', 1.2); % W/cm^2
+xlabel('z (mm)'); ylabel('I_{qwf} (W/cm^2)'); title('1) Intensity at wavefront');
+
+% 2. Plasma density (q-wf)
+nexttile; plot(z2_mm, Ne_qwf*1e-6, 'LineWidth', 1.2); % cm^{-3}
+xlabel('z (mm)'); ylabel('N_e (cm^{-3})'); title('2) Plasma density');
+
+% 2.5 Plasma phase (q-wf)
+nexttile; plot(z2_mm, Phi_plasma_qwf/pi, 'LineWidth', 1.2);
+xlabel('z (mm)'); ylabel('\Delta\Phi_{plasma} (\pi)'); title('2.5) Plasma phase (qwf)');
+
+% 3. Dipole phase (long, q-wf)
+nexttile; plot(z2_mm, Phi_dip_long_rel/pi, 'LineWidth', 1.2);
+xlabel('z (mm)'); ylabel('\Delta\Phi_{dip,long} (\pi)'); title('3) Dipole phase (long)');
+
+% 3.5 Total phase (long, q-wf)
+nexttile; plot(z2_mm, Phi_total_long_qwf_rel/pi, 'LineWidth', 1.2);
+xlabel('z (mm)'); ylabel('\Delta\Phi_{total,long} (\pi)'); title('3.5) Total phase (long)');
+
+% 4. HHG source (q-wf)
+nexttile; plot(z2_mm, Source_HHG, 'LineWidth', 1.2);
+xlabel('z (mm)'); ylabel('Source (arb./s)'); title('4) HHG source');
+
+% 5. Ionization rate (q-wf)
+nexttile; plot(z2_mm, W_qwf, 'LineWidth', 1.2);
+xlabel('z (mm)'); ylabel('W (1/s)'); title('5) Ionization rate');
+
+% 6. Accumulated HHG field (long)
+nexttile; plot(z2_mm, Eacc_long_norm, 'LineWidth', 1.2);
+xlabel('z (mm)'); ylabel('|E_{HHG,long}| (norm.)'); title('6) Accumulated HHG field');
+
+sgtitle(sprintf('Wavefront diagnostics (t\\_shift = %.1f fs, q = %d)', t_shift/fs, q));
+% =======================================================================================
