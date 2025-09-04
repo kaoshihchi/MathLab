@@ -779,6 +779,7 @@ for ii = 150:150
         n_2(jj,:) = ionizationResult(4,:);
         n_3(jj,:) = ionizationResult(5,:);        
         delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
+        n_0_qwf(jj) = n_0(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_1_qwf(jj) = n_1(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_2_qwf(jj) = n_2(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_3_qwf(jj) = n_3(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
@@ -790,7 +791,7 @@ for ii = 150:150
     switch I_p
         case E_ion_0                % neutral → 1+
             W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
-            n_source  = n_gas .* W_n_1_qwf;
+            n_source  = n_gas .* n_0_qwf .* W_n_1_qwf;
         case E_ion_1                % 1+ → 2+
             W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
             n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
