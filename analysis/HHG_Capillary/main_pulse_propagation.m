@@ -787,26 +787,23 @@ for ii = 150:150
   
  %%
 % neutral ~ 1+
-    W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
-    n_source = n_gas .*W_n_1_qwf;
-    E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
+    switch I_p
+        case E_ion_0                % neutral → 1+
+            W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
+            n_source  = n_gas .* W_n_1_qwf;
+        case E_ion_1                % 1+ → 2+
+            W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
+            n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
+        case E_ion_2                % 2+ → 3+
+            W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
+            n_source  = n_gas .* n_2_qwf' .* W_n_1_qwf;
+        otherwise
+            error('Unsupported ionization potential I_p = %g', I_p);
+    end
+    E_LH_l = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
     % short-trajectory emission
-    E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
+    E_LH_s = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
 
-  % % 1+ ~ 2+
-  %   W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
-  %   n_source = n_gas.*n_1_qwf'.*W_n_1_qwf;
-  %   E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
-  %   % short-trajectory emission
-  %   E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
-   
-%    % 2+ ~ 3+
-%    W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
-%    n_source = n_gas.*n_2_qwf'.*W_n_1_qwf;
-%    E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
-%    % short-trajectory emission
-%    E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
-   
 % Calculate the accumulated harmonic field
    E_HHG_l = cumsum(E_LH_l);
    E_HHG_s = cumsum(E_LH_s);
