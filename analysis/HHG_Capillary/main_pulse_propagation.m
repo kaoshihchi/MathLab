@@ -770,20 +770,16 @@ for ii = 150:150
    E_t2_qwf = zeros(N,1);
    for jj = 1:N
         E_t2(jj,:) = ElectricField_d(time+C_fun(z2(jj))-C_fun(z2(1)),E_peak(jj),omega_d,tau_0,D(jj)-D(1),C_fun(z2(jj))-C_fun(z2(1)),0); 
-        % local driving field vs. local time at position z2(jj).
         % E_t      = ElectricField_d(time,                           E_peak(1) ,omega_d,tau_0,0         ,0                         ,0);
         ionizationResult = TunnelingIonizationRate_Linear2((E_t2(jj,:)),omega_d,time+C_fun(z2(jj)),E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,FigureSwitch);
-        % shift the time axis by the accumulated group delay C(z)
         ionizationResult = ionizationResult';
-        % Returns arrays vs. time
         n_e(jj,:) = ionizationResult(1,:);        
         n_0(jj,:) = ionizationResult(2,:);
         n_1(jj,:) = ionizationResult(3,:);
         n_2(jj,:) = ionizationResult(4,:);
         n_3(jj,:) = ionizationResult(5,:);        
         delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
-        % round(0.5*size(time,2)) is the center index of your time array (your “reference”)
-        n_0_qwf(jj) = n_0(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));   % <-- NEW: neutral population on q-wavefront
+        n_0_qwf(jj) = n_0(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_1_qwf(jj) = n_1(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_2_qwf(jj) = n_2(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
         n_3_qwf(jj) = n_3(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
@@ -792,27 +788,23 @@ for ii = 150:150
   
  %%
 % neutral ~ 1+
-    W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
-    n_source = n_gas .*n_0_qwf .*W_n_1_qwf;
-    % ignores depletion/populations. It assumes every atom is in the required initial state, which is wrong if earlier (t < 0) intensity already ionized them.
-    E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
+    switch I_p
+        case E_ion_0                % neutral → 1+
+            W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
+            n_source  = n_gas .* n_0_qwf .* W_n_1_qwf;
+        case E_ion_1                % 1+ → 2+
+            W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
+            n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
+        case E_ion_2                % 2+ → 3+
+            W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
+            n_source  = n_gas .* n_2_qwf' .* W_n_1_qwf;
+        otherwise
+            error('Unsupported ionization potential I_p = %g', I_p);
+    end
+    E_LH_l = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
     % short-trajectory emission
-    E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
+    E_LH_s = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
 
-  % % 1+ ~ 2+
-  %   W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
-  %   n_source = n_gas.*n_1_qwf'.*W_n_1_qwf;
-  %   E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
-  %   % short-trajectory emission
-  %   E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
-   
-%    % 2+ ~ 3+
-%    W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
-%    n_source = n_gas.*n_2_qwf'.*W_n_1_qwf;
-%    E_LH_l = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
-%    % short-trajectory emission
-%    E_LH_s = n_source.*abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
-   
 % Calculate the accumulated harmonic field
    E_HHG_l = cumsum(E_LH_l);
    E_HHG_s = cumsum(E_LH_s);
