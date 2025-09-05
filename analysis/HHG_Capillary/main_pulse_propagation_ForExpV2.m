@@ -379,42 +379,94 @@ N_e_raw   = n_gas .* Z_ion;    % uncorrected electron density [m^{-3}]
    fprintf(fid_output,'(mm)       (mJ)          (arb.units)  (1/cm^3)    (fs^2/mm)   (fs^2)     (fs)            (W/cm^2)        (V/m)         (eV)       energy(mJ)  (mJ)        (mJ)       (mJ)       loss(mJ)\r\n');
    fprintf(fid_output,'%6.3f     %6.3f        %5.3f        %5.3E  % 5.3E  % 5.3E  %6.3f          %5.3E       %5.3E     %5.3E  %5.3E   %5.3E   %5.3E  %5.3E  %5.3E\r\n',result_temp);
    fclose(fid_output);
-   
-% Plot results
-   if FigureSwitch
-   figure;
-   subplot(4,3,1),  plot(z/mm,LaserEnergy/mJ),
-                    ylabel('laser energy (mJ)');
-   subplot(4,3,4),  plot(z/mm,E_peak),
-                    ylabel('E_{peak} (V/m)');
-   subplot(4,3,7),  plot(z/mm,I_peak*cm^2),
-                    ylabel('I_{peak} (W/cm^2)');
-   subplot(4,3,10), plot(z/mm,N_e/cm^(-3)),
-                    ylabel('N_e (cm^{-3})');
-                    xlabel('position z (mm)');
-                    legend('electron density','Location','NorthEast');
-   subplot(4,3,2),  plot(z/mm,GVD*mm/fs^2),
-                    ylabel('GVD (fs^2/mm)');
-                    hold on, plot(0,GVD_capillary*mm/fs^2,'r*'), hold off;
-                    legend('plasma','waveguide','Location','NorthEast');
-   subplot(4,3,5),  plot(z/mm,D/fs^2),
-                    ylabel('accumulated GDD (fs^2)');
-   subplot(4,3,8),  plot(z/mm,tau/fs),
-                    ylabel('pulse duration (fs)');
-   subplot(4,3,11), plot(z/mm,Energy_Ionization/dz),
-                    ylabel('ionization loss (mJ/mm)');
-                    xlabel('position z (mm)');
-   subplot(4,3,3),  plot(z/mm,Energy_ATI/dz),
-                    ylabel('ATI loss (mJ/mm)'),
-   subplot(4,3,6),  plot(z/mm,Energy_IB/dz),
-                    ylabel('IB loss (mJ/mm)'),
-   subplot(4,3,9),  plot(z/mm,Energy_TS/dz),
-                    ylabel('TS loss (mJ/mm)'),
-   subplot(4,3,12), plot(z/mm,Energy_capillary/dz),
-                    ylabel('capillary loss (mJ/mm)'),
-                    xlabel('position z (mm)');
-   sgtitle('Driving pulse propagation');
-   end
+   %%
+% ================= Plot Driving Pulse Propagation =================
+if FigureSwitch
+    fig3 = figure('Color','w');
+    tiledlayout(fig3,4,3,'Padding','compact','TileSpacing','compact');
+
+    % 1) Laser energy vs z
+    nexttile; 
+    plot(z/mm, LaserEnergy/mJ, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('Laser energy (mJ)');
+    title('Pulse energy remaining');
+
+    % 2) Electric field amplitude vs z
+    nexttile; 
+    plot(z/mm, E_peak, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('E_{peak} (V/m)');
+    title('Peak electric field amplitude');
+
+    % 3) Intensity vs z
+    nexttile; 
+    plot(z/mm, I_peak*cm^2, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('I_{peak} (W/cm^2)');
+    title('Peak intensity');
+
+    % 4) Electron density vs z
+    nexttile; 
+    plot(z/mm, N_e/cm^3, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('N_e (cm^{-3})');
+    legend('Electron density','Location','northeast');
+    title('Plasma density from ionization');
+
+    % 5) Group-velocity dispersion vs z
+    nexttile; 
+    plot(z/mm, GVD*mm/fs^2, 'LineWidth',1.2); hold on;
+    plot(0, GVD_capillary*mm/fs^2, 'r*', 'MarkerSize',8);
+    hold off;
+    xlabel('z (mm)'); ylabel('GVD (fs^2/mm)');
+    legend('Plasma','Waveguide','Location','northeast');
+    title('Group-velocity dispersion contributions');
+
+    % 6) Accumulated GDD vs z
+    nexttile; 
+    plot(z/mm, D/fs^2, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('GDD (fs^2)');
+    title('Accumulated group-delay dispersion');
+
+    % 7) Pulse duration vs z
+    nexttile; 
+    plot(z/mm, tau/fs, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('\tau (fs)');
+    title('Temporal broadening of pulse');
+
+    % 8) Ionization energy loss per length
+    nexttile; 
+    plot(z/mm, Energy_Ionization/dz, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('Loss (mJ/mm)');
+    title('Ionization energy loss');
+
+    % 9) ATI energy loss per length
+    nexttile; 
+    plot(z/mm, Energy_ATI/dz, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('Loss (mJ/mm)');
+    title('Above-threshold ionization loss');
+
+    % 10) Inverse Bremsstrahlung loss per length
+    nexttile; 
+    plot(z/mm, Energy_IB/dz, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('Loss (mJ/mm)');
+    title('Inverse Bremsstrahlung loss');
+
+    % 11) Thomson scattering loss per length
+    nexttile; 
+    plot(z/mm, Energy_TS/dz, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('Loss (mJ/mm)');
+    title('Thomson scattering loss');
+
+    % 12) Capillary attenuation loss per length
+    nexttile; 
+    plot(z/mm, Energy_capillary/dz, 'LineWidth',1.2);
+    xlabel('z (mm)'); ylabel('Loss (mJ/mm)');
+    title('Capillary guiding loss');
+
+    % ---- Global figure title ----
+    sgtitle({'Driving pulse propagation in capillary waveguide', ...
+             'Part I, raw evolution'});
+end
+
+   %%
                     
 
 % Curve fitting
@@ -450,54 +502,118 @@ N_e_raw   = n_gas .* Z_ion;    % uncorrected electron density [m^{-3}]
 
    % phase velocity of the driving pulse v_d_cfit(z)
    v_d_cfit = fit(z',v_d','poly3');    % unit: m/sec
+%%
+if FigureSwitch
+    fig_fit = figure('Color','w');
+    tiledlayout(fig_fit,4,3,'Padding','compact','TileSpacing','compact');
 
-   if FigureSwitch
-      figure;
-      subplot(4,3,1),  plot(E_peak_cfit,z,E_peak),
-                       ylabel('E_{peak} (V/m)');
-                       xlabel('position z (m)');
-                       title('peak electric field');
-      subplot(4,3,4);
-         plot(z, I_peak_cfit(z)*cm^2, z, I_peak*cm^2);
-         ylabel('I_{peak} (W/cm^2)');
-         xlabel('position z (m)');
-         title('peak intensity');
-      subplot(4,3,7);
-         plot(z, N_e_cfit(z)*cm^3, z, N_e*cm^3);
-         ylabel('N_e (cm^{-3})');
-         xlabel('position z (m)');
-         title('electron density');
-      subplot(4,3,2),  plot(n_plasma_d_cfit,z,n_plasma_d),
-                       ylabel('n_{plasma}');
-                       xlabel('position z (m)');
-                       title('plasma refractive index');
-      subplot(4,3,5),  plot(D_cfit,z,D/fs^2),
-                       ylabel('D (fs^2)');
-                       xlabel('position z (m)');
-                       title('group-delay-dispersion (GDD)');
-      subplot(4,3,8),  plot(tau_cfit,z,tau/fs),
-                       ylabel('\tau (fs)');
-                       xlabel('position z (m)');
-                       title('pulse duration');
-      subplot(4,3,11),  plot(C_cfit,z,C/fs),
-                       ylabel('C (fs)');
-                       xlabel('position z (m)');
-                       title('group delay');
-      subplot(4,3,3),  plot(k_d_total_cfit,z,k_d_total),
-                       ylabel('k_{d\_total}(z) (1/m)');
-                       xlabel('position z (m)');
-                       title('total wavenumber');
-      subplot(4,3,6),  plot(phi_d_prop_cfit,z,phi_d_prop),
-                       ylabel('\phi_{d\_prop}(z) (rad)');
-                       xlabel('position z (m)');
-                       title('accumulated phase due to propagation');
-      subplot(4,3,9),  plot(v_d_cfit,z,v_d),
-                       ylabel('v_d (m/sec)');
-                       xlabel('position z (m)');
-                       title('phase velocity');
-      sgtitle('Driving pulse propagation');
-   end
-   
+    % Convenience for dynamic title
+    try
+        gas_str = Gas;
+    catch, gas_str = 'Gas'; end
+    try
+        sgt = sprintf(['Driving pulse propagation — fits vs data\n' ...
+                       '\\lambda = %.0f nm, R_{cap} = %.0f \\mu m, L_{cap} = %.1f mm, gas = %s'], ...
+                       lambda*1e9, R_capillary*1e6, L_capillary*1e3, gas_str);
+    catch
+        sgt = 'Driving pulse propagation — fits vs data';
+    end
+
+    lw_fit  = 1.6; % line width for fits
+    lw_data = 1.2; % line width for raw data
+
+    % (1,1) Peak electric field
+    nexttile; 
+    plot(z, E_peak_cfit(z), '--', 'LineWidth', lw_fit); hold on;
+    plot(z, E_peak,          '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('E_{peak} (V/m)');
+    title('Peak electric field');
+    legend('fit','data','Location','best');
+
+    % (2,1) Peak intensity (W/cm^2)
+    nexttile;
+    plot(z, I_peak_cfit(z)*cm^2, '--', 'LineWidth', lw_fit); hold on;
+    plot(z, I_peak*cm^2,          '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('I_{peak} (W/cm^2)');
+    title('Peak intensity');
+    legend('fit','data','Location','best');
+
+    % (3,1) Electron density (cm^{-3})
+    nexttile;
+    plot(z, N_e_cfit(z)*cm^3, '--', 'LineWidth', lw_fit); hold on;
+    plot(z, N_e*cm^3,          '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('N_e (cm^{-3})');
+    title('Electron density');
+    legend('fit','data','Location','best');
+
+    % (1,2) Plasma refractive index
+    nexttile;
+    plot(z, n_plasma_d_cfit(z), '--', 'LineWidth', lw_fit); hold on;
+    plot(z, n_plasma_d,          '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('n_{plasma}');
+    title('Plasma refractive index');
+    legend('fit','data','Location','best');
+
+    % (2,2) Group-delay dispersion D (fs^2)
+    % D_cfit fitted on D/fs^2, so evaluate then multiply
+    nexttile;
+    plot(z, D_cfit(z), '--', 'LineWidth', lw_fit); hold on;        % already fs^2
+    plot(z, D/fs^2,    '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('D (fs^2)');
+    title('Group-delay dispersion (GDD)');
+    legend('fit','data','Location','best');
+
+    % (3,2) Pulse duration (fs)
+    nexttile;
+    plot(z, tau_cfit(z), '--', 'LineWidth', lw_fit); hold on;       % already fs
+    plot(z, tau/fs,      '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('\tau (fs)');
+    title('Pulse duration');
+    legend('fit','data','Location','best');
+
+    % (4,2) Group delay C (fs)
+    nexttile;
+    plot(z, C_cfit(z), '--', 'LineWidth', lw_fit); hold on;         % already fs
+    plot(z, C/fs,       '-',  'LineWidth', lw_data); hold off; grid on;
+    xlabel('position z (m)'); ylabel('C (fs)');
+    title('Group delay');
+    legend('fit','data','Location','best');
+
+    % (1,3) Total wavenumber k_d_total (1/m)
+    nexttile;
+    plot(z, k_d_total_cfit(z), '--', 'LineWidth', lw_fit); hold on;
+    plot(z, k_d_total,          '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('k_{d,total} (1/m)');
+    title('Total wavenumber');
+    legend('fit','data','Location','best');
+
+    % (2,3) Accumulated phase from propagation \phi_{d,prop} (rad)
+    nexttile;
+    plot(z, phi_d_prop_cfit(z), '--', 'LineWidth', lw_fit); hold on;
+    plot(z, phi_d_prop,          '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('\phi_{d,prop} (rad)');
+    title('Accumulated propagation phase');
+    legend('fit','data','Location','best');
+
+    % (3,3) Phase velocity v_d (m/s)
+    nexttile;
+    plot(z, v_d_cfit(z), '--', 'LineWidth', lw_fit); hold on;
+    plot(z, v_d,          '-',  'LineWidth', lw_data); hold off; grid on;
+    ylabel('v_d (m/s)');
+    title('Phase velocity');
+    legend('fit','data','Location','best');
+
+    % Bottom-right tile left blank -> place a summary note if you like:
+    nexttile; axis off;
+    text(0,0.9,'Notes:', 'FontWeight','bold');
+    text(0,0.7,'• Fits: dashed; Data: solid');
+    text(0,0.5,'• Units shown on each axis');
+    text(0,0.3,'• Same z-range (meters) across panels');
+
+    sgtitle(sgt, 'Interpreter','tex');
+end
+
+   %%
 % Part II: HHG calculation ------------------------------------------------
 
 % Set the coordinate and variables
@@ -556,24 +672,52 @@ N_e_raw   = n_gas .* Z_ion;    % uncorrected electron density [m^{-3}]
    
    alpha_l_cfit = fit(I_dipole_s',alpha_l','poly5');       % unit: m^2/W
    alpha_s_cfit = fit(I_dipole_l',alpha_s','poly5');       % unit: m^2/W
-   
+   %%
    if FigureSwitch
-   figure;
-   subplot(1,4,1), plot(Phi_dipole_l_cfit,I_dipole_l,Phi_dipole_l);
-      xlabel('intensity (W/m^2)'), ylabel('\Phi_{dipole\_long} (rad)');
-      title('long-trajectory dipole phase');
-   subplot(1,4,2), plot(Phi_dipole_s_cfit,I_dipole_s,Phi_dipole_s);
-      xlabel('intensity (W/m^2)'), ylabel('\Phi_{dipole\_short} (rad)');
-      title('short-trajectory dipole phase');
-   subplot(1,4,3), plot(alpha_l_cfit,I_dipole_l,alpha_l);
-      xlabel('intensity (W/cm^2)'), ylabel('\alpha_{long} (m^2/W)');
-      title('long-trajectory \alpha');
-   subplot(1,4,4), plot(alpha_s_cfit,I_dipole_s,alpha_s);
-      xlabel('intensity (W/cm^2)'), ylabel('\alpha_{short} (m^2/W)');
-      title('short-trajectory \alpha');
-   sgtitle('Dipole phase calculation');
-   end
-   
+    fig_dip = figure('Color','w');
+    tiledlayout(fig_dip,1,4,'Padding','compact','TileSpacing','compact');
+
+    % intensity in W/cm^2
+    I_dipole_cm2_l = I_dipole_l * 1e-4;
+    I_dipole_cm2_s = I_dipole_s * 1e-4;
+
+    % (1) Long-trajectory dipole phase
+    nexttile;
+    plot(I_dipole_cm2_l, Phi_dipole_l, 'o', 'LineWidth',1.2); hold on;
+    plot(I_dipole_cm2_l, Phi_dipole_l_cfit(I_dipole_l), 'r--', 'LineWidth',1.6); hold off; grid on;
+    xlabel('Intensity (W/cm^2)'); ylabel('\Phi_{dipole,long} (rad)');
+    title('Long-trajectory dipole phase');
+    legend('data','fit','Location','best');
+
+    % (2) Short-trajectory dipole phase
+    nexttile;
+    plot(I_dipole_cm2_s, Phi_dipole_s, 'o', 'LineWidth',1.2); hold on;
+    plot(I_dipole_cm2_s, Phi_dipole_s_cfit(I_dipole_s), 'r--', 'LineWidth',1.6); hold off; grid on;
+    xlabel('Intensity (W/cm^2)'); ylabel('\Phi_{dipole,short} (rad)');
+    title('Short-trajectory dipole phase');
+    legend('data','fit','Location','best');
+
+    % (3) Long-trajectory alpha coefficient
+    nexttile;
+    plot(I_dipole_cm2_l, alpha_l, 'o', 'LineWidth',1.2); hold on;
+    plot(I_dipole_cm2_l, alpha_l_cfit(I_dipole_s), 'r--', 'LineWidth',1.6); hold off; grid on;
+    xlabel('Intensity (W/cm^2)'); ylabel('\alpha_{long} (m^2/W)');
+    title('Long-trajectory \alpha');
+    legend('data','fit','Location','best');
+
+    % (4) Short-trajectory alpha coefficient
+    nexttile;
+    plot(I_dipole_cm2_s, alpha_s, 'o', 'LineWidth',1.2); hold on;
+    plot(I_dipole_cm2_s, alpha_s_cfit(I_dipole_l), 'r--', 'LineWidth',1.6); hold off; grid on;
+    xlabel('Intensity (W/cm^2)'); ylabel('\alpha_{short} (m^2/W)');
+    title('Short-trajectory \alpha');
+    legend('data','fit','Location','best');
+
+    % ---- Super title ----
+    sgtitle('Dipole phase and \alpha coefficients vs intensity');
+end
+
+   %%
 % wavenumber of the driving pulse   (1-by-N2 array)
    % wavenumber of the driving pulse in plasma (1/m)
    k_d_plasma2 = k_0 * n_plasma_d_cfit(z2)';
@@ -887,37 +1031,154 @@ N_e_qwf = zeros(N2, 1);
       ylabel('Ionization rate (Hz)');
       title('Ionization rate');
  %%  
-   figure
-   subplot(2,2,1)
-   plot(z2/mm,I_d2_qwf,z2/mm,I_peak);
-      xlabel('z (mm)');
-      ylabel('I (W/m^2)');
-      legend('fixed q-wf','peak','Location','NorthWest');
-      title('fixed q-wf driving field intensity')
-   subplot(2,2,2)
-   
-   Delta_Phi_dipole_Peak = Phi_dipole_l_cfit(I_peak)-(Phi_dipole_l_cfit(I_peak(1)));  
-   Delta_Phi_dipole_L_qwf = Phi_dipole_l_cfit(I_d2_qwf)-(Phi_dipole_l_cfit(I_d2_qwf(1)));
-   Delta_Phi_dipole_S_qwf = Phi_dipole_s_cfit(I_d2_qwf)-(Phi_dipole_s_cfit(I_d2_qwf(1)));   
+  %% ================= q-th HHG wavefront diagnostics (baseline: t_shift = 0) =================
+% Purpose: Same panels as Figure 10, but evaluated strictly at the q-wavefront with t_shift = 0.
+% This lets you compare "t = 0" vs your shifted observer (Figure 10).
 
-   plot(z2/mm,Delta_Phi_dipole_L_qwf/pi,z2/mm,Delta_Phi_dipole_Peak/pi);
-      xlabel('z (mm)');
-      ylabel('\Delta\Phi(rad/\pi)');
-      legend('fixed q-wf','peak','Location','NorthWest');
-      title('fixed q-wf driving field dipole')
-   subplot(2,2,3)
-   plot(z2/mm,Delta_Phi_plasma/pi);
-      xlabel('z (mm)');
-      ylabel('\Delta\Phi_p(rad/\pi)');
-      title('plasma phase')
-   subplot(2,2,4)
-   Delta_Phi_total_L_qwf = Delta_Phi_plasma + Delta_Phi_capillary + Delta_Phi_dipole_L_qwf' ;
-   Delta_Phi_total_S_qwf = Delta_Phi_plasma + Delta_Phi_capillary + Delta_Phi_dipole_S_qwf' ;   
-   plot(z2/mm, (Delta_Phi_total_L_qwf - Delta_Phi_total_L_qwf(1))/pi );
-      xlabel('z (mm)');
-      ylabel('\Delta\Phi_{total}(rad/\pi)');
-      title('total phase') 
- 
+% --- 0) Build the q-wf driving field with NO observer shift ---
+E_d2_qwf0 = zeros(1, N2);
+for j = 1:N2
+    % note: NO -t_shift here
+    E_d2_qwf0(j) = ElectricField_d(t2_qwf(j), ...
+        E_peak_cfit(z2(j)), omega_d, ...
+        tau_0, D_fun(z2(j)) - D_fun(z2(1)), ...
+        C_fun(z2(j)) - C_fun(z2(1)), ...
+        phi_d_prop_cfit(z2(j)) - phi_d_prop_cfit(z2(1)));
+end
+I_qwf0  = abs(E_d2_qwf0).^2 / (2*mu_0*c);    % [W/m^2]
+Phi_d2_qwf0 = angle(E_d2_qwf0);              % driving phase at q-wf, t_shift = 0
+
+% --- 1) Wavefront-aligned populations at t_shift = 0 (indexing via delta_tw0) ---
+% Reuse your ionizationResult engine, sample the same way you did but WITHOUT t_shift.
+n_0_qwf0 = zeros(N2,1); n_1_qwf0 = zeros(N2,1);
+n_2_qwf0 = zeros(N2,1); n_3_qwf0 = zeros(N2,1);
+E_t2_qwf0 = zeros(N2,1);
+
+for jj = 1:N2
+    % local field trace at z2(jj), same as before
+    Et_local = ElectricField_d(time + C_fun(z2(jj)) - C_fun(z2(1)), ...
+        E_peak_cfit(z2(jj)), omega_d, ...
+        tau_0, D_fun(z2(jj)) - D_fun(z2(1)), ...
+        C_fun(z2(jj)) - C_fun(z2(1)), 0);
+    ionRes = TunnelingIonizationRate_Linear2(Et_local, omega_d, ...
+        time + C_fun(z2(jj)), E_ion_0, E_ion_1, E_ion_2, E_ion_3, E_ion_4, FigureSwitch).';
+    % Align observer to q-wavefront WITHOUT t_shift:
+    delta_tw0 = (C_fun(z2(jj)) - C_fun(z2(1))) - t2_qwf(jj);
+    idx0 = round(0.5*size(time,2)) - round(delta_tw0/DeltaTime);
+    idx0 = max(1, min(length(time), idx0)); % clamp for safety
+
+    n_0_qwf0(jj) = ionRes(2, idx0);
+    n_1_qwf0(jj) = ionRes(3, idx0);
+    n_2_qwf0(jj) = ionRes(4, idx0);
+    n_3_qwf0(jj) = ionRes(5, idx0);
+    E_t2_qwf0(jj) = Et_local(idx0);
+end
+
+Z_ion_qwf0 = n_1_qwf0 + 2*n_2_qwf0 + 3*n_3_qwf0;
+Ne_qwf0    = n_gas .* Z_ion_qwf0' .* f_avg;     % [1/m^3] calibrated wavefront density (t_shift = 0)
+
+% --- 2) Plasma/total phases along q-wf (t_shift = 0) ---
+n_plasma_d_qwf0 = sqrt(1 - (q_e^2 .* Ne_qwf0) ./ (epsilon_0 * m_e * omega_d^2));
+n_plasma_q_qwf0 = sqrt(1 - (q_e^2 .* Ne_qwf0) ./ (epsilon_0 * m_e * (q*omega_d)^2));
+
+k_d_plasma_qwf0 = k_0     .* n_plasma_d_qwf0;
+k_q_plasma_qwf0 = (q*k_0) .* n_plasma_q_qwf0;
+
+k_d_total_qwf0 = k_d_plasma_qwf0 + k_d_capillary;  % same capillary term
+k_q_total_qwf0 = k_q_plasma_qwf0 + k_q_capillary;
+
+Delta_k_plasma_qwf0 = q*k_d_plasma_qwf0 - k_q_plasma_qwf0;   % [1/m]
+Phi_plasma_qwf0     = cumsum(Delta_k_plasma_qwf0) * dz2;     % [rad]
+
+Phi_dip_long0     = Phi_dipole_l_cfit(I_qwf0)';              % [rad]
+Phi_dip_long0_rel = Phi_dip_long0 - Phi_dip_long0(1);
+
+Phi_total_long_qwf0 = Phi_plasma_qwf0 + Delta_Phi_capillary + Phi_dip_long0;
+Phi_total_long_qwf0_rel = Phi_total_long_qwf0 - Phi_total_long_qwf0(1);
+
+% --- 3) Source & ionization rate (q-wf, t_shift = 0) ---
+% pick the correct ground/state for I_p:
+switch I_p
+    case E_ion_0
+        W_qwf0 = StaticIonizationRate(E_ion_0, abs(E_d2_qwf0));
+        n_source0 = n_gas .* n_0_qwf0' .* W_qwf0;
+    case E_ion_1
+        W_qwf0 = StaticIonizationRate(E_ion_1, abs(E_d2_qwf0));
+        n_source0 = n_gas .* n_1_qwf0' .* W_qwf0;
+    case E_ion_2
+        W_qwf0 = StaticIonizationRate(E_ion_2, abs(E_d2_qwf0));
+        n_source0 = n_gas .* n_2_qwf0' .* W_qwf0;
+    otherwise
+        error('Unsupported ionization potential I_p = %g', I_p);
+end
+
+% --- 4) Accumulated HHG (long/short) at q-wf, t_shift = 0 ---
+Phi_LH_l0 = q*Phi_d2_qwf0 + Phi_dipole_l_cfit(I_qwf0)';   % long
+Phi_LH_s0 = q*Phi_d2_qwf0 + Phi_dipole_s_cfit(I_qwf0)';   % short
+
+E_LH_l0 = n_source0 .* abs(E_d2_qwf0).^5 .* exp(1i*Phi_LH_l0);
+E_LH_s0 = n_source0 .* abs(E_d2_qwf0).^5 .* exp(1i*Phi_LH_s0);
+
+E_HHG_l0 = cumsum(E_LH_l0);
+E_HHG_s0 = cumsum(E_LH_s0);
+
+E_q_PM0      = n_source0 .* abs(E_d2_qwf0).^5;
+E_q_PM0_final = cumsum(E_q_PM0);
+E_q_PM0_max   = max(E_q_PM0_final) + eps;
+
+% --- 5) Plot (same panel order/style as Figure 10) ---
+z2_mm = z2 / mm;
+fig9b = figure('Name','Wavefront diagnostics (baseline t_shift=0)','Color','w');
+tiledlayout(fig9b,4,2,'Padding','compact','TileSpacing','compact');
+
+% (1) Intensity at wavefront
+nexttile; plot(z2_mm, I_qwf0*1e-4, 'LineWidth',1.2); grid on;  % -> W/cm^2
+xlabel('z (mm)'); ylabel('I_{qwf} (W/cm^2)');
+title('1) Intensity at wavefront (t_{shift}=0)');
+
+% (2) Plasma density
+nexttile; plot(z2_mm, Ne_qwf0*1e-6, 'LineWidth',1.2); grid on; % -> cm^{-3}
+xlabel('z (mm)'); ylabel('N_e (cm^{-3})');
+title('2) Plasma density (t_{shift}=0)');
+
+% (2.5) Plasma phase
+nexttile; plot(z2_mm, Phi_plasma_qwf0/pi, 'LineWidth',1.2); grid on;
+xlabel('z (mm)'); ylabel('\Delta\Phi_{plasma} (\pi)');
+title('2.5) Plasma phase (t_{shift}=0)');
+
+% (3) Dipole phase (long)
+nexttile; plot(z2_mm, Phi_dip_long0_rel/pi, 'LineWidth',1.2); grid on;
+xlabel('z (mm)'); ylabel('\Delta\Phi_{dip,long} (\pi)');
+title('3) Dipole phase (long, t_{shift}=0)');
+
+% (3.5) Total phase (long)
+nexttile; plot(z2_mm, Phi_total_long_qwf0_rel/pi, 'LineWidth',1.2); grid on;
+xlabel('z (mm)'); ylabel('\Delta\Phi_{total,long} (\pi)');
+title('3.5) Total phase (long, t_{shift}=0)');
+
+% (4) HHG source
+nexttile; plot(z2_mm, n_source0, 'LineWidth',1.2); grid on;
+xlabel('z (mm)'); ylabel('Source (arb./s)');
+title('4) HHG source (t_{shift}=0)');
+
+% (5) Ionization rate
+nexttile; plot(z2_mm, W_qwf0, 'LineWidth',1.2); grid on;
+xlabel('z (mm)'); ylabel('W (1/s)');
+title('5) Ionization rate (t_{shift}=0)');
+
+% (6) Accumulated HHG field (long)
+nexttile; plot(z2_mm, abs(E_HHG_l0)/(max(abs(E_HHG_l0))+eps), 'LineWidth',1.2); grid on;
+xlabel('z (mm)'); ylabel('|E_{HHG,long}| (norm.)');
+title('6) Accumulated HHG field (long, t_{shift}=0)');
+
+% ---- sgtitle ----
+if exist('q','var')
+    sgtitle(sprintf('q-th HHG wavefront diagnostics (baseline t_{shift}=0, q=%d)', q));
+else
+    sgtitle('q-th HHG wavefront diagnostics (baseline t_{shift}=0)');
+end
+
+%% 
    % Export results (usual units)
    result_Dispersion(1,:) = z2/mm;                      % position (mm)
    result_Dispersion(2,:) = Delta_Phi_plasma/pi;       % plasma dispersion (rad/pi)
@@ -936,26 +1197,55 @@ N_e_qwf = zeros(N2, 1);
    fclose(fid_output);          
       
  %%     
-   figure    
-   subplot(2,2,1), plot(z2/mm,(Phi_LH_l-Phi_LH_l(1))/pi);grid on
-      xlabel('z (mm)');
-      ylabel('\Delta \Phi_{LH} (rad/\pi)');
-      title('phase of the long-trajectory LH field (fixed q-wf)');
-   subplot(2,2,2), plot(z2/mm,(Phi_LH_s-Phi_LH_s(1))/pi);grid on
-      xlabel('z (mm)');
-      ylabel('\Delta \Phi_{LH} (rad/\pi)');
-      title('phase of the short-trajectory LH field (fixed q-wf)');
-   subplot(2,2,3), plot(z2/mm,1e-6*n_source,z2/mm,W_n_1_qwf);grid on
-      xlabel('z (mm)');
-      ylabel('source density rate (1/s/cm^{-3})');
-      title('He^{1+} \times W(|E_{qwf}|)');           
-   subplot(2,2,4), plot(z2/mm,abs(E_HHG_l)/E_q_PhaseMatched_final_max,z2/mm,abs(E_HHG_s)/E_q_PhaseMatched_final_max);grid on
-   % subplot(2,2,4), plot(z2/mm,abs(E_HHG_l)/E_q_PhaseMatched_final,z2/mm,abs(E_HHG_s)/E_q_PhaseMatched_final);grid on
-      xlabel('z (mm)');
-      ylabel('|E_{HHG}| (arb. units)');
-      legend(['long, end=',num2str(abs(E_HHG_l(end))/E_q_PhaseMatched_final_max)],['short, end=',num2str(abs(E_HHG_s(end))/E_q_PhaseMatched_final_max)],'Location','southeast');
-      % legend(['long, end=',num2str(abs(E_HHG_l(end))/E_q_PhaseMatched_final_max)],['short, end=',num2str(abs(E_HHG_s(end))/E_q_PhaseMatched_final_max)],'Location','southeast');
-      title('accumulated harmonic field (fixed q-wf)');
+ % ==== Figure: q-th HHG wavefront diagnostics (q-wf) ====
+fig9 = figure('Color','w'); 
+tiledlayout(fig9,2,2,'Padding','compact','TileSpacing','compact');
+
+% 1) Long-trajectory LH phase (relative) along q-wf
+nexttile; 
+plot(z2/mm, (Phi_LH_l - Phi_LH_l(1))/pi, 'LineWidth', 1.2); grid on;
+xlabel('z (mm)');
+ylabel('\Delta \Phi_{LH} (rad/\pi)');
+title('Long-trajectory LH phase (q-wf)');
+
+% 2) Short-trajectory LH phase (relative) along q-wf
+nexttile; 
+plot(z2/mm, (Phi_LH_s - Phi_LH_s(1))/pi, 'LineWidth', 1.2); grid on;
+xlabel('z (mm)');
+ylabel('\Delta \Phi_{LH} (rad/\pi)');
+title('Short-trajectory LH phase (q-wf)');
+
+% 3) Source density rate along q-wf
+%    n_source is already built from q-wf populations * W_n_1_qwf (q-wf rate)
+nexttile; 
+plot(z2/mm, 1e-6*n_source, 'LineWidth', 1.2); hold on;
+plot(z2/mm, W_n_1_qwf, 'LineWidth', 1.2); grid on; hold off;
+xlabel('z (mm)');
+ylabel('source density rate (1/s/cm^{-3})');
+legend('n_{source} (×10^{-6})','W(|E_{qwf}|)','Location','best');
+title('Source @ q-wf');
+
+% 4) Accumulated HHG field magnitude (normalized) along q-wf
+long_end  = abs(E_HHG_l(end))/E_q_PhaseMatched_final_max;
+short_end = abs(E_HHG_s(end))/E_q_PhaseMatched_final_max;
+nexttile; 
+plot(z2/mm, abs(E_HHG_l)/E_q_PhaseMatched_final_max, 'LineWidth', 1.2); hold on;
+plot(z2/mm, abs(E_HHG_s)/E_q_PhaseMatched_final_max, 'LineWidth', 1.2); grid on; hold off;
+xlabel('z (mm)');
+ylabel('|E_{HHG}| (arb. units)');
+legend(sprintf('long, end=%.3g', long_end), sprintf('short, end=%.3g', short_end), ...
+       'Location','southeast');
+title('Accumulated HHG field (q-wf)');
+
+% ---- Title (shows q and t_shift if available) ----
+if exist('q','var') && exist('t_shift','var')
+    sgtitle(sprintf('q-th HHG wavefront diagnostics (q = %d, t_{shift} = %.1f fs)', q, t_shift/1e-15));
+elseif exist('q','var')
+    sgtitle(sprintf('q-th HHG wavefront diagnostics (q = %d, no t_{shift})', q));
+else
+    sgtitle('q-th HHG wavefront diagnostics (q-wf)');
+end
+
 
 % Export results (usual units)
    result_HHG(1,:) = z2/mm;           % position (mm)
