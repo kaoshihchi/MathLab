@@ -463,7 +463,7 @@ N_e_raw   = n_gas .* Z_ion;    % uncorrected electron density [m^{-3}]
          xlabel('position z (m)');
          title('peak intensity');
       subplot(4,3,7);
-         plot(z, N_e_cfit(z)/cm^3, z, N_e/cm^3);
+         plot(z, N_e_cfit(z)*cm^3, z, N_e*cm^3);
          ylabel('N_e (cm^{-3})');
          xlabel('position z (m)');
          title('electron density');
