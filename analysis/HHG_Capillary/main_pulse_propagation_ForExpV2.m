@@ -1179,23 +1179,23 @@ else
 end
 
 %% 
-   % Export results (usual units)
-   result_Dispersion(1,:) = z2/mm;                      % position (mm)
-   result_Dispersion(2,:) = Delta_Phi_plasma/pi;       % plasma dispersion (rad/pi)
-   result_Dispersion(3,:) = Delta_Phi_capillary/pi;    % capillary dispersion (rad/pi)
-   result_Dispersion(4,:) = Delta_Phi_dipole_L_qwf/pi;     % dipole phase - long (rad/pi)
-   result_Dispersion(5,:) = Delta_Phi_dipole_S_qwf/pi;     % dipole phase - long (rad/pi)
-   result_Dispersion(6,:) = Delta_Phi_total_L_qwf/pi;      % total phase - long (rad/pi)
-   result_Dispersion(7,:) = Delta_Phi_total_S_qwf/pi;      % total phase - short (rad/pi))
-   result_Dispersion(8,:) = I_peak*1e-4;                   % peak intensity
-   result_Dispersion(9,:) = I_d2_qwf*1e-4;                 % qfw intensity
-
-   fid_output = fopen('DispersionSource_qwf.txt','w');
-   fprintf(fid_output,'position   Delta_Phi_plasma  Delta_Phi_capillary  Delta_Phi_dipole_l   Delta_Phi_dipole_s         Delta_Phi_total_l        Delta_Phi_total_s    I_peak    I_d2_qwf     \r\n');
-   fprintf(fid_output,'(mm)       (rad/pi)          (rad/pi)             (rad/pi)             (rad/pi)                   (rad/pi)                 (rad/pi)             (W/cm^2)  (W/cm^2)     \r\n');
-   fprintf(fid_output,'%5.9e       %5.9e            %5.9e                %5.9e                %5.9e                      %5.9e                    %5.9e                %5.9e     %5.9e        \r\n',result_Dispersion);
-   fclose(fid_output);          
-      
+%    % Export results (usual units)
+%    result_Dispersion(1,:) = z2/mm;                      % position (mm)
+%    result_Dispersion(2,:) = Delta_Phi_plasma/pi;       % plasma dispersion (rad/pi)
+%    result_Dispersion(3,:) = Delta_Phi_capillary/pi;    % capillary dispersion (rad/pi)
+%    result_Dispersion(4,:) = Phi_dip_long0_rel/pi;     % dipole phase - long (rad/pi)
+%    result_Dispersion(5,:) = Phi_/pi;     % dipole phase - long (rad/pi)
+%    result_Dispersion(6,:) = Delta_Phi_total_L_qwf/pi;      % total phase - long (rad/pi)
+%    result_Dispersion(7,:) = Delta_Phi_total_S_qwf/pi;      % total phase - short (rad/pi))
+%    result_Dispersion(8,:) = I_peak*1e-4;                   % peak intensity
+%    result_Dispersion(9,:) = I_d2_qwf*1e-4;                 % qfw intensity
+% 
+%    fid_output = fopen('DispersionSource_qwf.txt','w');
+%    fprintf(fid_output,'position   Delta_Phi_plasma  Delta_Phi_capillary  Delta_Phi_dipole_l   Delta_Phi_dipole_s         Delta_Phi_total_l        Delta_Phi_total_s    I_peak    I_d2_qwf     \r\n');
+%    fprintf(fid_output,'(mm)       (rad/pi)          (rad/pi)             (rad/pi)             (rad/pi)                   (rad/pi)                 (rad/pi)             (W/cm^2)  (W/cm^2)     \r\n');
+%    fprintf(fid_output,'%5.9e       %5.9e            %5.9e                %5.9e                %5.9e                      %5.9e                    %5.9e                %5.9e     %5.9e        \r\n',result_Dispersion);
+%    fclose(fid_output);          
+%       
  %%     
  % ==== Figure: q-th HHG wavefront diagnostics (q-wf) ====
 fig9 = figure('Color','w'); 
