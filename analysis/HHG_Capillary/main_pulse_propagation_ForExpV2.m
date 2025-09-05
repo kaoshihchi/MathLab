@@ -464,6 +464,9 @@ if FigureSwitch
     % ---- Global figure title ----
     sgtitle({'Driving pulse propagation in capillary waveguide', ...
              'Part I, raw evolution'});
+    set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
+    drawnow;
+
 end
 
    %%
@@ -611,6 +614,8 @@ if FigureSwitch
     text(0,0.3,'• Same z-range (meters) across panels');
 
     sgtitle(sgt, 'Interpreter','tex');
+    set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
+    drawnow;
 end
 
    %%
@@ -715,6 +720,8 @@ end
 
     % ---- Super title ----
     sgtitle('Dipole phase and \alpha coefficients vs intensity');
+    set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
+    drawnow;
 end
 
    %%
@@ -831,6 +838,8 @@ end
       xlabel('z (mm)');
       ylabel('L_{dephasing\_short} (mm)');
       legend('short');
+   set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
+   drawnow;
 
   % Export results (usual units)
    result_Dispersion(1,:) = z2/mm;                      % position (mm)
@@ -1030,6 +1039,8 @@ N_e_qwf = zeros(N2, 1);
       xlabel('z (mm)');
       ylabel('Ionization rate (Hz)');
       title('Ionization rate');
+   set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
+    drawnow;
  %%  
   %% ================= q-th HHG wavefront diagnostics (baseline: t_shift = 0) =================
 % Purpose: Same panels as Figure 10, but evaluated strictly at the q-wavefront with t_shift = 0.
@@ -1177,7 +1188,8 @@ if exist('q','var')
 else
     sgtitle('q-th HHG wavefront diagnostics (baseline t_{shift}=0)');
 end
-
+set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
+    drawnow;
 %% 
 %    % Export results (usual units)
 %    result_Dispersion(1,:) = z2/mm;                      % position (mm)
@@ -1245,7 +1257,8 @@ elseif exist('q','var')
 else
     sgtitle('q-th HHG wavefront diagnostics (q-wf)');
 end
-
+set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
+    drawnow;
 
 % Export results (usual units)
    result_HHG(1,:) = z2/mm;           % position (mm)
@@ -1386,19 +1399,142 @@ nexttile; plot(z2_mm, Eacc_long_norm, 'LineWidth', 1.2);
 xlabel('z (mm)'); ylabel('|E_{HHG,long}| (norm.)'); title('6) Accumulated HHG field');
 
 sgtitle(sprintf('Wavefront diagnostics (t\\_shift = %.1f fs, q = %d)', t_shift/fs, q));
+set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
+drawnow;
+
+%%
+% outDir = save_all_figs_with_sgtitle('G:\My Drive\Capillary HHG');
 % =======================================================================================
 
-function P = pop_from_nebar(nebar)
-% Map average electrons/atom -> charge-state populations via staircase rule.
-% Guarantees sum_s n_s = 1 and sum_s s*n_s ≈ nebar for s = 0..3 (extend if needed)
+function outDir = save_all_figs_with_sgtitle(outRoot)
+% save_all_figs_with_sgtitle  Save all open figures using sgtitle/tiledlayout title as the filename.
+%
+%   outDir = save_all_figs_with_sgtitle(outRoot)
+%
+%   - Creates a timestamped subfolder under outRoot.
+%   - For each open figure:
+%       * Tries to read the tiledlayout Title (if present)
+%       * Else tries sgtitle (suptitle) text
+%       * Else falls back to Figure Name
+%       * Else 'Figure_<N>'
+%     Then saves: <title>.png (300 dpi) and <title>.fig
+%
+%   Example:
+%       outDir = save_all_figs_with_sgtitle('D:\HHG_runs');
 
-clip01 = @(x) max(0, min(1, x));
+    if nargin < 1 || isempty(outRoot)
+        error('Please provide an output root folder, e.g., D:\HHG_runs');
+    end
+    if ~exist(outRoot, 'dir')
+        mkdir(outRoot);
+    end
 
-P.n0 = 1 - clip01(nebar);                        % neutral
-P.n1 = clip01(nebar - 0) - clip01(nebar - 1);    % 1+
-P.n2 = clip01(nebar - 1) - clip01(nebar - 2);    % 2+
-P.n3 = clip01(nebar - 2) - clip01(nebar - 3);    % 3+
-% If you need 4+, add:
-% P.n4 = clip01(nebar - 3) - clip01(nebar - 4);
+    % Timestamped folder
+    ts = datestr(now, 'yyyymmdd_HHMMSS');
+    outDir = fullfile(outRoot, ts);
+    if ~exist(outDir, 'dir')
+        mkdir(outDir);
+    end
+
+    % Get figures in creation order
+    figs = findall(0, 'Type', 'figure');
+    if isempty(figs)
+        warning('No open figures to save.');
+        return;
+    end
+    figs = flipud(figs); % so Figure 1..N order
+
+    for k = 1:numel(figs)
+        fig = figs(k);
+
+        % -------- Get a global title string --------
+        titleStr = '';
+
+        % 1) tiledlayout Title (preferred when using tiledlayout)
+        tl = findall(fig, 'Type', 'tiledlayout');
+        if ~isempty(tl)
+            try
+                tStr = tl(1).Title.String;
+                if iscell(tStr), tStr = strjoin(tStr, ' - '); end
+                if ~isempty(strtrim(tStr))
+                    titleStr = tStr;
+                end
+            end
+        end
+
+        % 2) sgtitle / suptitle (if used)
+        if isempty(titleStr)
+            % sgtitle usually creates a special axes tagged 'suptitle'
+            supAx = findall(fig, 'Type', 'axes', 'Tag', 'suptitle');
+            if ~isempty(supAx)
+                % Text object is its child
+                txt = findall(supAx(1), 'Type', 'text');
+                if ~isempty(txt)
+                    tStr = txt(1).String;
+                    if iscell(tStr), tStr = strjoin(tStr, ' - '); end
+                    if ~isempty(strtrim(tStr))
+                        titleStr = tStr;
+                    end
+                end
+            else
+                % Some MATLAB versions tag the text directly
+                supTxt = findall(fig, 'Type', 'text', 'Tag', 'suptitle');
+                if ~isempty(supTxt)
+                    tStr = supTxt(1).String;
+                    if iscell(tStr), tStr = strjoin(tStr, ' - '); end
+                    if ~isempty(strtrim(tStr))
+                        titleStr = tStr;
+                    end
+                end
+            end
+        end
+
+        % 3) Fallback: Figure Name
+        if isempty(titleStr)
+            fName = get(fig, 'Name');
+            if ~isempty(strtrim(fName))
+                titleStr = fName;
+            end
+        end
+
+        % 4) Final fallback
+        if isempty(titleStr)
+            titleStr = sprintf('Figure_%d', k);
+        end
+
+        % -------- Sanitize to a safe filename --------
+        safeName = titleStr;
+        % Replace newline/whitespace runs with single space
+        safeName = regexprep(safeName, '\s+', ' ');
+        % Remove illegal filename characters
+        safeName = regexprep(safeName, '[/\\:*?"<>|]', '');
+        % Trim
+        safeName = strtrim(safeName);
+        % Collapse spaces to underscores
+        safeName = regexprep(safeName, '\s', '_');
+        % Limit length if needed (Windows path limits)
+        if numel(safeName) > 180
+            safeName = safeName(1:180);
+        end
+
+        % -------- Save --------
+        pngPath = fullfile(outDir, [safeName '.png']);
+        figPath = fullfile(outDir, [safeName '.fig']);
+
+        try
+            % Use exportgraphics for high-quality output (R2020a+)
+            exportgraphics(fig, pngPath, 'Resolution', 300);
+        catch
+            % Fallback
+            saveas(fig, pngPath);
+        end
+
+        savefig(fig, figPath);
+
+        fprintf('Saved: %s\n', pngPath);
+    end
+
+    fprintf('\nAll figures saved to: %s\n', outDir);
 end
+
 
