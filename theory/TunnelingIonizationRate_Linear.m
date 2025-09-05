@@ -34,6 +34,8 @@ function result = TunnelingIonizationRate_Linear(E_t,omega_d,time,...
    EField_t_envelope = abs(E_t);
    % phase of the electric field (rad)
    EPhase_t = angle(E_t);
+
+   I_t = abs(E_t).^2 / (2*mu_0*c);
    
  % Ionization rate as a function of time (row vector) (Hz)
    W_0_t = StaticIonizationRate(E_ion_0, EField_t_abs);  % 0  -> 1+
@@ -143,12 +145,14 @@ function result = TunnelingIonizationRate_Linear(E_t,omega_d,time,...
    if FigureSwitch
       t = time ./ fs;
       figure;
-      subplot(4,1,1), plot(t,EField_t),
+      subplot(5,1,1), plot(t,EField_t),
                       ylabel('laser electric field (V/m)');
-      subplot(4,1,2), plot(t,n_0,t,n_1,t,n_2,t,n_3,t,n_4,t,n_5),
+      subplot(5,1,2), plot(t,I_t .* 1E-4),
+                      ylabel('laser intensity (W*cm^{-2})');
+      subplot(5,1,3), plot(t,n_0,t,n_1,t,n_2,t,n_3,t,n_4,t,n_5),
                       ylabel('relative ion population');
-      subplot(4,1,3), plot(t, n_re), ylabel('relative electron density n_e');
-      subplot(4,1,4), plot(t, Energy_ATI_t / eV), ylabel('Energy_{ATI} (eV)'),
+      subplot(5,1,4), plot(t, n_re), ylabel('relative electron density n_e');
+      subplot(5,1,5), plot(t, Energy_ATI_t / eV), ylabel('Energy_{ATI} (eV)'),
       xlabel('time (fs)');
  
       % Export results (usual units)

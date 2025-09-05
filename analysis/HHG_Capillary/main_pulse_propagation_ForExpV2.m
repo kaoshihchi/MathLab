@@ -784,8 +784,8 @@ fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
 % index i for traing different wavefront 
 % ---- Safe timing shift used ONLY in Part II (HHG observer) ----
 % Negative t_shift => waveform earlier. Adds to C so (t-C) is unchanged.
-ElectricField_shifted = @(t,Epk,om,tau0,D,C,phi) ...
-    ElectricField_d(t, Epk, om, tau0, D, C + t_shift, phi);
+% ElectricField_shifted = @(t,Epk,om,tau0,D,C,phi) ...
+%     ElectricField_d(t, Epk, om, tau0, D, C + t_shift, phi);
 
 
 for ii = 150:150  
@@ -807,19 +807,16 @@ for ii = 150:150
    z2_qwf = t2_qwf.*v_q; 
    
    for j = 1:N2
-      % Generate the driving field E_d2 at (z2,t=t_d2(z2))
-        E_d2_dwf(j) = ElectricField_shifted( ...
-            t2_dwf(j), E_peak_cfit(z2(j)), omega_d, ...
-            tau_0, D_fun(z2(j)) - D_fun(z2(1)), ...
-            C_fun(z2(j)) - C_fun(z2(1)), ...
-            phi_d_prop_cfit(z2(j)) - phi_d_prop_cfit(z2(1)));
-
+      % Generate the driving field E_d2 at (z2,t=t_d2(z2)) E_d2(z)
+      E_d2_dwf(j) = ElectricField_d(t2_dwf(j),E_peak_cfit(z2(j)),omega_d,...
+                                tau_0,D_fun(z2(j))-D_fun(z2(1)),...
+                                C_fun(z2(j))-C_fun(z2(1)),...
+                                phi_d_prop_cfit(z2(j))-phi_d_prop_cfit(z2(1)));
       % Generate the driving field E_d2 at (z2,t=t_q(z2))
-          E_d2_qwf(j) = ElectricField_shifted( ...
-        t2_qwf(j), E_peak_cfit(z2(j)), omega_d, ...
-        tau_0, D_fun(z2(j)) - D_fun(z2(1)), ...
-        C_fun(z2(j)) - C_fun(z2(1)), ...
-        phi_d_prop_cfit(z2(j)) - phi_d_prop_cfit(z2(1)));
+      E_d2_qwf(j) = ElectricField_d(t2_qwf(j),E_peak_cfit(z2(j)),omega_d,...
+                                tau_0,D_fun(z2(j))-D_fun(z2(1)),...
+                                C_fun(z2(j))-C_fun(z2(1)),...
+                                phi_d_prop_cfit(z2(j))-phi_d_prop_cfit(z2(1)));
 
    end
    I_d2_dwf = abs(E_d2_dwf).^2/(2*mu_0*c);    % driving intensity with fixed driving wavefront (W/m^2)
@@ -827,75 +824,27 @@ for ii = 150:150
    Phi_d2_dwf = angle(E_d2_dwf);   % driving field phase with fixed driving wavefront
    Phi_d2_qwf = angle(E_d2_qwf);   % driving field phase with fixed harmonic wavefront
 
-   
-
-% % ---------- Wavefront-sampled populations & density (insert here) ----------
-% % Preallocate (z2 grid)
-% n_0_qwf = zeros(N2,1);
-% n_1_qwf = zeros(N2,1);
-% n_2_qwf = zeros(N2,1);
-% n_3_qwf = zeros(N2,1);
-% n_e_qwf = zeros(N2,1);     % electron fraction at q-wavefront time
-% E_t2_qwf = zeros(N2,1);
-% delta_tw  = zeros(N2,1);
-% 
-% % Time series scratch (single row reused to avoid big N-by-Nt array)
-% Nt = numel(time);
-% E_t_row = zeros(1,Nt);
-% 
-% for jj = 1:N2
-%     % Build the local driving field vs time at position z2(jj) (peak-frame),
-%     % using your fitted propagation terms on z2:
-%     E_t_row(:) = ElectricField_d( ...
-%         time + (C_fun(z2(jj)) - C_fun(z2(1))), ...
-%         E_peak_cfit(z2(jj)), omega_d, tau_0, ...
-%         D_fun(z2(jj)) - D_fun(z2(1)), ...
-%         C_fun(z2(jj)) - C_fun(z2(1)), 0);
-% 
-%     % Time-resolved ionization populations at z2(jj)
-%     ion_row = TunnelingIonizationRate_Linear2( ...
-%         E_t_row, omega_d, time + C_fun(z2(jj)), ...
-%         E_ion_0, E_ion_1, E_ion_2, E_ion_3, E_ion_4, 0).';  % rows: [n_e; n_0; n_1; n_2; n_3; ...]
-% 
-%     % Wavefront time index (align the observer time with q-wavefront, incl. t_shift)
-%     delta_tw(jj) = (C_fun(z2(jj)) - C_fun(z2(1)) + t_shift) - t2_qwf(jj);
-%     idx = round(0.5*Nt) - round(delta_tw(jj)/DeltaTime);
-%     idx = max(1, min(Nt, idx));  % safe clipping
-% 
-%     % Pick populations at the q-wavefront time
-%     n_e_qwf(jj) = ion_row(1, idx);
-%     n_0_qwf(jj) = ion_row(2, idx);
-%     n_1_qwf(jj) = ion_row(3, idx);
-%     n_2_qwf(jj) = ion_row(4, idx);
-%     n_3_qwf(jj) = ion_row(5, idx);
-% 
-%     % Field sample at the same time (if needed for checks)
-%     E_t2_qwf(jj) = E_t_row(idx);
-% end
-% 
-% % Physical electron density at the wavefront
-% N_e_qwf = n_gas .* n_e_qwf;   % [1/m^3]
-% N_e_qwf = f_avg .* f_peak .* N_e_qwf;   % calibrated to experiment
+ 
 % % --------------------------------------------------------------------------
 
-% ===== Intensity-ratio wavefront density model =====
-% Calibrated peak density profile on z2 (already includes f_peak and f_avg
-% because N_e was fitted after calibration):
-N_e_peak_z2 = N_e_cfit(z2)';         % [1/m^3] calibrated peak density
-
-% Intensities:
-I_peak_z2   = I_peak_cfit(z2)';      % [W/m^2] peak intensity along z2
-I_qwf       = abs(E_d2_qwf).^2 / (2*mu_0*c);   % [W/m^2] already computed
-
-% Ratio r \in [0,1]
-r = I_qwf ./ max(I_peak_z2, eps);
-r = max(0, min(1, r));
-
-% Nonlinearity (tunable). Start with 1.5; use 1.0 if you want linear scaling.
-gamma = 1;
-
-% Wavefront electron density (heuristic):
-N_e_qwf = N_e_peak_z2 .* (r.^gamma);   % [1/m^3]
+% % ===== Intensity-ratio wavefront density model =====
+% % Calibrated peak density profile on z2 (already includes f_peak and f_avg
+% % because N_e was fitted after calibration):
+% N_e_peak_z2 = N_e_cfit(z2)';         % [1/m^3] calibrated peak density
+% 
+% % Intensities:
+% I_peak_z2   = I_peak_cfit(z2)';      % [W/m^2] peak intensity along z2
+% I_qwf       = abs(E_d2_qwf).^2 / (2*mu_0*c);   % [W/m^2] already computed
+% 
+% % Ratio r \in [0,1]
+% r = I_qwf ./ max(I_peak_z2, eps);
+% r = max(0, min(1, r));
+% 
+% % Nonlinearity (tunable). Start with 1.5; use 1.0 if you want linear scaling.
+% gamma = 1;
+% 
+% % Wavefront electron density (heuristic):
+% N_e_qwf = N_e_peak_z2 .* (r.^gamma);   % [1/m^3]
 
 % If (for any reason) you prefer to explicitly carry the same calibration
 % constants here instead of relying on N_e_cfit being calibrated, you can use:
@@ -903,10 +852,10 @@ N_e_qwf = N_e_peak_z2 .* (r.^gamma);   % [1/m^3]
 % (only if you have a Z_ion fit; otherwise the first line is preferred)
 % ================================================
 
+N_e_qwf = zeros(N2, 1);
 
 
-
-% phase of the local harmonic field
+% phase of the local harmonic field Phi_HHG(z) = q*Phi_drive(z) + dipole
 % Trace a fixed harmonic wavefront
    % long-trajectory emission
    Phi_LH_l = q*Phi_d2_qwf + Phi_dipole_l_cfit(I_d2_qwf)';
@@ -916,6 +865,7 @@ N_e_qwf = N_e_peak_z2 .* (r.^gamma);   % [1/m^3]
 % Calculate the local harmonic field
    % long-trajectory emission
    %Phi_LH_l = Phi_LH_l - Phi_LH_l(1);
+   % Ionization at t_shift wavefront
    E_t2 = zeros(N,size(time,2));
    ionizationResult = zeros(8,size(time,2));
    n_0 = zeros(N,size(time,2));
@@ -924,11 +874,13 @@ N_e_qwf = N_e_peak_z2 .* (r.^gamma);   % [1/m^3]
    n_3 = zeros(N,size(time,2));  
    n_e = zeros(N,size(time,2));   
    delta_tw = zeros(N,1);
+   n_0_qwf = zeros(N,1); 
    n_1_qwf = zeros(N,1);    
    n_2_qwf = zeros(N,1);   
    n_3_qwf = zeros(N,1);    
    E_t2_qwf = zeros(N,1);
-   for jj = 1:N
+   for jj = 1:N     % propagation along z
+        % E_t2(z, t)
         E_t2(jj,:) = ElectricField_d(time+C_fun(z2(jj))-C_fun(z2(1)),E_peak(jj),omega_d,tau_0,D(jj)-D(1),C_fun(z2(jj))-C_fun(z2(1)),0); 
         % E_t      = ElectricField_d(time,                           E_peak(1) ,omega_d,tau_0,0         ,0                         ,0);
         ionizationResult = TunnelingIonizationRate_Linear2((E_t2(jj,:)),omega_d,time+C_fun(z2(jj)),E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,FigureSwitch);
@@ -937,28 +889,35 @@ N_e_qwf = N_e_peak_z2 .* (r.^gamma);   % [1/m^3]
         n_0(jj,:) = ionizationResult(2,:);
         n_1(jj,:) = ionizationResult(3,:);
         n_2(jj,:) = ionizationResult(4,:);
-        n_3(jj,:) = ionizationResult(5,:);        
+        n_3(jj,:) = ionizationResult(5,:);  
+        % the observer time at each z for the harmonic wavefront
         % delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
-        delta_tw(jj) = (C_fun(z2(jj)) - C_fun(z2(1)) + t_shift) - t2_qwf(jj)
-        n_0_qwf(jj) = n_0(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
-        n_1_qwf(jj) = n_1(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
-        n_2_qwf(jj) = n_2(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
-        n_3_qwf(jj) = n_3(jj, round(0.5*size(time,2))- 1*round(delta_tw(jj)/DeltaTime));
-        E_t2_qwf(jj) =  E_t2(jj, round(0.5*size(time,2)) - 1*round(delta_tw(jj)/DeltaTime));
+        % C_fun: relative delay of the pulse envelope center. Subtracting t2_qwf(jj) aligns your laser field’s “local clock” with the harmonic wavefront clock.
+        delta_tw(jj) = (C_fun(z2(jj)) - C_fun(z2(1)) - t_shift) - t2_qwf(jj); 
+        % If delta_tw(jj) = 0, then idx = center index → the pulse peak.
+        idx = round(0.5*size(time,2)) - round(delta_tw(jj)/DeltaTime);
+        n_0_qwf(jj) = n_0(jj, idx);
+        n_1_qwf(jj) = n_1(jj, idx);
+        n_2_qwf(jj) = n_2(jj, idx);
+        n_3_qwf(jj) = n_3(jj, idx);
+        E_t2_qwf(jj) =  E_t2(jj, idx);
    end
+   % The plasma density at t_shift
+   Z_ion_qwf = n_1_qwf + 2*n_2_qwf + 3*n_3_qwf; 
+   N_e_qwf = n_gas .* Z_ion_qwf' .* f_avg; 
   
  %%
 % neutral ~ 1+
    switch I_p
     case E_ion_0
         W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
-        n_source  = n_gas .* n_0_qwf .* W_n_1_qwf;
+        n_source  = n_gas .* n_0_qwf' .* W_n_1_qwf;
     case E_ion_1
         W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
-        n_source  = n_gas .* n_1_qwf .* W_n_1_qwf;
+        n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
     case E_ion_2
         W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
-        n_source  = n_gas .* n_2_qwf .* W_n_1_qwf;
+        n_source  = n_gas .* n_2_qwf' .* W_n_1_qwf;
     otherwise
         error('Unsupported ionization potential I_p = %g', I_p);
     end
@@ -981,8 +940,8 @@ N_e_qwf = N_e_peak_z2 .* (r.^gamma);   % [1/m^3]
       legend('fixed d-wf','fixed q-wf','E_{peak}','Location','SouthWest');
       title('driving field amplitude')
    subplot(5,1,2)
-        plot(z2/mm, (t2_dwf - (C_fun(z2)'-C_fun(0)' + t_shift))/fs, ...
-             z2/mm, (t2_qwf - (C_fun(z2)'-C_fun(0)' + t_shift))/fs, 'LineWidth',1.2);
+        plot(z2/mm, (t2_dwf - (C_fun(z2)'-C_fun(0)' - t_shift))/fs, ...
+             z2/mm, (t2_qwf - (C_fun(z2)'-C_fun(0)' - t_shift))/fs, 'LineWidth',1.2);
         xlabel('z (mm)');
         ylabel('\Delta t (fs)');
         legend('t2_{dwf} - C(z)','t2_{qwf} - C(z)','Location','SouthWest');
@@ -1131,7 +1090,7 @@ end
 z2_mm = z2 / mm;
 
 % 1) Intensity at wavefront (harmonic-frame)
-I_qwf = abs(E_d2_qwf).^2 / (2*mu_0*c);          % [W/m^2]
+I_qwf = abs(E_t2_qwf).^2 / (2*mu_0*c);          % [W/m^2]
 
 % 2) Plasma density along z AT THE WAVEFRONT (already t_shift-aligned above)
 %    (Keep Ne_z2 only if you want to compare to the smooth fit)
@@ -1211,3 +1170,18 @@ xlabel('z (mm)'); ylabel('|E_{HHG,long}| (norm.)'); title('6) Accumulated HHG fi
 
 sgtitle(sprintf('Wavefront diagnostics (t\\_shift = %.1f fs, q = %d)', t_shift/fs, q));
 % =======================================================================================
+
+function P = pop_from_nebar(nebar)
+% Map average electrons/atom -> charge-state populations via staircase rule.
+% Guarantees sum_s n_s = 1 and sum_s s*n_s ≈ nebar for s = 0..3 (extend if needed)
+
+clip01 = @(x) max(0, min(1, x));
+
+P.n0 = 1 - clip01(nebar);                        % neutral
+P.n1 = clip01(nebar - 0) - clip01(nebar - 1);    % 1+
+P.n2 = clip01(nebar - 1) - clip01(nebar - 2);    % 2+
+P.n3 = clip01(nebar - 2) - clip01(nebar - 3);    % 3+
+% If you need 4+, add:
+% P.n4 = clip01(nebar - 3) - clip01(nebar - 4);
+end
+
