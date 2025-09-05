@@ -231,7 +231,6 @@ for qq = 1 : 1
    Energy_TS(1) = LaserEnergy(1) * a_TS(1) * dz;
 
    % capillary attenuation coefficient (1/m)
-   % a_capillary = CapillaryAttenuationCoefficient(lambda,n_capillary,R_capillary);
    
    % capillary attenuated energy in a capillary section z = 0~dz (J)
    Energy_capillary(1) = LaserEnergy(1) * a_capillary * dz;
@@ -306,88 +305,17 @@ for qq = 1 : 1
    end
    
 % --------------------------------------------------------------------
-%% --- Peak-slice calibration pass (build f_peak from peak-time plasma) ---
-
-% We will build a local time-shifted waveform at each z and use the
-% time-resolved ionization to sample the electron density at the pulse peak.
-
-Ne_peak = zeros(1, N);            % electron density at the local peak time
-for j = 1:N
-    % Build time-shifted waveform so the local envelope center is near the
-    % center of 'time'. (Use same D and C you computed.)
-    E_t_loc = ElectricField_d( ...
-        time + (C(j) - C(1)), ...                % align local group delay
-        E_peak(j), omega_d, tau_0, ...
-        D(j) - D(1), (C(j) - C(1)), 0);
-
-    % Get time-resolved ionization (populations and ne vs time)
-    % NOTE: you already use TunnelingIonizationRate_Linear2 later in Part II.
-    ion_res = TunnelingIonizationRate_Linear2( ...
-        E_t_loc, omega_d, time + C(j), ...
-        E_ion_0, E_ion_1, E_ion_2, E_ion_3, E_ion_4, 0);  % FigureSwitch=0
-
-    ion_res = ion_res.';         % make it  (rows = species, cols = time)
-    ne_t    = ion_res(1, :);     % electron density (arb. to your code’s scale)
-
-    % Find pulse-peak time index for this z (maximize |E|)
-    [~, idx_peak] = max(abs(E_t_loc));
-
-    % Peak-time electron density (convert to physical using uniform gas)
-    % Your code uses Z_ion as "relative e- density" and N_e = n_gas * Z_ion.
-    Ne_peak(j) = n_gas * ne_t(idx_peak);
-end
-
-% Average along the capillary to obtain the model's peak-slice mean density
-Ne_th_avg_peak = trapz(z, Ne_peak) / L_capillary;   % [m^-3]
-
-% Experimental average (already in [m^-3] in your code as Ne_exp_avg)
-% Build the calibration factor from the peak-slice model:
-f_peak = max(0, Ne_exp_avg / max(Ne_th_avg_peak, eps));
-
-% ----- Apply this peak-based factor to your previously computed Z_ion -----
-Z_ion = max(0, f_peak .* Z_ion);
-N_e   = n_gas .* Z_ion;
-
-% Recompute all plasma-dependent propagation terms with the calibrated N_e
-GVD        = arrayfun(@(ne) GroupVelocityDispersion(omega_d, ne), N_e);
-n_plasma_d = sqrt(1 - (q_e^2 .* N_e) ./ (epsilon_0 * m_e * omega_d^2));
-k_d_plasma = k_0 .* n_plasma_d;
-
-% Waveguide term was constant in your model (R fixed):
-% k_d_capillary is already defined earlier (scalar or vector, as you prefer)
-k_d_total  = k_d_plasma + k_d_capillary;
-phi_d_prop = cumsum(k_d_total * dz);
-v_d        = omega_d ./ k_d_total;
-
-% Accumulated group delay and GDD with recalibrated plasma contribution
-C = zeros(1, N);
-for j = 1:N-1
-    C(j+1) = C(j) + dz/(c*n_plasma_d(j+1)) + (u_11^2*c)/(2*R_capillary^2*omega_d^2)*dz;
-end
-D = cumsum((GVD + GVD_capillary) * dz);
-
-% (Optional) keep track for debugging:
-fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
-
-
+% Preserve raw ATI result before applying experimental corrections
+Z_ion_raw = Z_ion;             % relative electron density from ATI theory
+N_e_raw   = n_gas .* Z_ion;    % uncorrected electron density [m^{-3}]
 
 % Calibrate theoretical plasma density with experimental average
 %---------------------------------------------------------------------
-   % Build model electron density from ATI theory
-   N_e_th = n_gas .* Z_ion;              % 1/m^3
-   
-   % Model average over the full capillary
-   Ne_th_avg = trapz(z, N_e_th) / L_capillary;
-
-   % Experimental average (cm^-3 -> m^-3)
-   % Ne_exp_avg = 2.4e17 * 1e6;
-
-   % Scalar factor from averages (>= 0)
-   f_avg = max(0, Ne_exp_avg / max(Ne_th_avg, eps));
-
-   % Apply factor to average charge and rebuild calibrated density
-   Z_ion = max(0, f_avg .* Z_ion);
-   N_e   = n_gas .* Z_ion;           % calibrated electron density
+   % f_avg = Ne_exp_avg / <N_e_raw(z)> ; Ne(z) = f_avg * N_e_raw(z)
+   Ne_th_avg = trapz(z, N_e_raw) / L_capillary;      % model average [m^{-3}]
+   f_avg = max(0, Ne_exp_avg / max(Ne_th_avg, eps)); % experimental correction
+   Z_ion = max(0, f_avg .* Z_ion_raw);               % corrected charge state
+   N_e   = n_gas .* Z_ion;                           % corrected electron density
 
    % Recompute plasma dependent quantities with calibrated density
    GVD = arrayfun(@(ne) GroupVelocityDispersion(omega_d, ne), N_e);
@@ -401,13 +329,14 @@ fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
        C(j+1) = C(j) + dz/(c*n_plasma_d(j+1)) + (u_11^2*c)/(2*R_capillary^2*omega_d^2)*dz;
    end
    D = cumsum((GVD + GVD_capillary) * dz);
+   
 %---------------------------------------------------------------------
 
 % Export results (SI units)
    result_SI_temp(1,:) = z;            % position (m)
    result_SI_temp(2,:) = LaserEnergy;  % laser pulse energy (J)
    result_SI_temp(3,:) = Z_ion;        % average ionization state
-   result_SI_temp(4,:) = N_e;          % electron density N_e(z) (1/m^3)
+   result_SI_temp(4,:) = N_e;          % electron density N_e(z) (1/m^3, f_{avg} corrected)
    result_SI_temp(5,:) = GVD;          % group-velocity dispersion at z (sec^2/m)
    result_SI_temp(6,:) = D;            % accumulated group-delay dispersion at z (sec^2)
    result_SI_temp(7,:) = tau;          % laser pulse duration at z (sec)
@@ -432,7 +361,7 @@ fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
    result_temp(1,:) = z/mm;           % position (mm)
    result_temp(2,:) = LaserEnergy/mJ; % laser pulse energy (mJ)
    result_temp(3,:) = Z_ion;          % average ionization state
-   result_temp(4,:) = N_e*cm^3;       % electron density N_e(z) (1/cm^3)
+   result_temp(4,:) = N_e*cm^3;       % electron density N_e(z) (1/cm^3, f_{avg} corrected)
    result_temp(5,:) = GVD/fs^2*mm;    % group-velocity dispersion at z (fs^2/mm)
    result_temp(6,:) = D/fs^2;         % accumulated group-delay dispersion at z (fs^2)
    result_temp(7,:) = tau/fs;         % laser pulse duration at z (fs)
@@ -458,8 +387,8 @@ fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
                     ylabel('laser energy (mJ)');
    subplot(4,3,4),  plot(z/mm,E_peak),
                     ylabel('E_{peak} (V/m)');
-   subplot(4,3,7),  plot(z/mm,I_peak),
-                    ylabel('I_{peak} (W/m^2)');
+   subplot(4,3,7),  plot(z/mm,I_peak*cm^2),
+                    ylabel('I_{peak} (W/cm^2)');
    subplot(4,3,10), plot(z/mm,N_e/cm^(-3)),
                     ylabel('N_e (cm^{-3})');
                     xlabel('position z (mm)');
@@ -489,31 +418,27 @@ fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
                     
 
 % Curve fitting
-   % peak electric field (cfit object) E_peak_cfit(z)
-   % This is a cfit object, which can be used as a function:
-   %    E_peak = E_peak_cfit(z),
-   E_peak_cfit = fit(z',E_peak','exp1');   % unit: V/m 
-   
-   % peak laser intensity (cfit object) I_peak_cfit
-   % This is a cfit object, which can be used as a function:
-   %    I_peak = I_peak_cfit(z),
-   I_peak_cfit = fit(z',I_peak','exp1');   % unit: W/m^2
-   
-   % pulse duration (cfit object) tau_cfit
-   tau_cfit = fit(z',(tau/fs)','poly3');   % unit: fs
-   tau_fun = @(z) tau_cfit(z)*fs;         % unit: sec 
+   % E_peak(z) = E_peak_cfit(z) [V/m]
+   E_peak_cfit = fit(z',E_peak','exp1');
 
-   % electron density (cfit object) N_e_cfit(z)
-   N_e_cfit = fit(z',N_e','poly3');        % unit: m^-3
-   
-   % accumulated GDD (cfit object) D_cfit(z)
-   D_cfit = fit(z',(D/fs^2)','poly3');     % unit: fs^2
-   D_fun = @(z) D_cfit(z)*fs^2;            % unit: s^2
-   
-   % plasma refractive index of the driving pulse (cfit object) n_plasma_cfit(z)
+   % I_peak(z) = I_peak_cfit(z) [W/m^2]
+   I_peak_cfit = fit(z',I_peak','exp1');
+
+   % tau(z) = tau_cfit(z) [s]
+   tau_cfit = fit(z',(tau/fs)','poly3');
+   tau_fun = @(z) tau_cfit(z)*fs;
+
+   % N_e(z) = N_e_cfit(z) [m^{-3}]
+   N_e_cfit = fit(z',N_e','poly3');
+
+   % D(z) = D_cfit(z) [s^2]
+   D_cfit = fit(z',(D/fs^2)','poly3');
+   D_fun = @(z) D_cfit(z)*fs^2;
+
+   % n_plasma_d(z) = n_plasma_d_cfit(z)
    n_plasma_d_cfit = fit(z',n_plasma_d','poly3');
-   
-   % accumulated group delay (cfit object) C_cfit(z)
+
+   % C(z) = C_cfit(z) [s]
    C_cfit = fit(z',(C/fs)','poly3');       % unit: fs
    C_fun = @(z) C_cfit(z)*fs;              % unit: sec
    
@@ -532,14 +457,16 @@ fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
                        ylabel('E_{peak} (V/m)');
                        xlabel('position z (m)');
                        title('peak electric field');
-      subplot(4,3,4),  plot(I_peak_cfit,z,I_peak),
-                       ylabel('I_{peak} (W/m^2)');
-                       xlabel('position z (m)');
-                       title('peak intensity');
-      subplot(4,3,7),  plot(N_e_cfit,z,N_e),
-                       ylabel('N_e (m^{-3})');
-                       xlabel('position z (m)');
-                       title('electron density');
+      subplot(4,3,4);
+         plot(z, I_peak_cfit(z)*cm^2, z, I_peak*cm^2);
+         ylabel('I_{peak} (W/cm^2)');
+         xlabel('position z (m)');
+         title('peak intensity');
+      subplot(4,3,7);
+         plot(z, N_e_cfit(z)/cm^3, z, N_e/cm^3);
+         ylabel('N_e (cm^{-3})');
+         xlabel('position z (m)');
+         title('electron density');
       subplot(4,3,2),  plot(n_plasma_d_cfit,z,n_plasma_d),
                        ylabel('n_{plasma}');
                        xlabel('position z (m)');
@@ -730,26 +657,26 @@ fprintf('Peak-slice calibration factor f_peak = %.3f\n', f_peak);
       xlabel('z (mm)');
       ylabel('\Delta k_{total\_short} (1/m)');
       legend('total\_short');
-   subplot(5,3,2), plot(z2/mm,Delta_Phi_plasma,z2/mm,Delta_Phi_capillary,'r*');
+   subplot(5,3,2), plot(z2/mm,Delta_Phi_plasma/pi,z2/mm,Delta_Phi_capillary/pi,'r*');
       xlabel('z (mm)');
-      ylabel('\Delta \Phi (rad)');
+      ylabel('\Delta \Phi (\pi)');
       legend('plasma','waveguide','Location','NorthEast');
       title('accumulated phase mismatch');
-   subplot(5,3,5), plot(z2/mm,Delta_Phi_dipole_l);
+   subplot(5,3,5), plot(z2/mm,Delta_Phi_dipole_l/pi);
       xlabel('z (mm)');
-      ylabel('\Delta \Phi_{dipole\_long} (rad)');
+      ylabel('\Delta \Phi_{dipole\_long} (\pi)');
       legend('dipole\_long');
-   subplot(5,3,8), plot(z2/mm,Delta_Phi_dipole_s);
+   subplot(5,3,8), plot(z2/mm,Delta_Phi_dipole_s/pi);
       xlabel('z (mm)');
-      ylabel('\Delta \Phi_{dipole\_short} (rad)');
+      ylabel('\Delta \Phi_{dipole\_short} (\pi)');
       legend('dipole\_short');
-   subplot(5,3,11), plot(z2/mm,Delta_Phi_total_l);
+   subplot(5,3,11), plot(z2/mm,Delta_Phi_total_l/pi);
       xlabel('z (mm)');
-      ylabel('\Delta \Phi_{total\_long} (rad)');
+      ylabel('\Delta \Phi_{total\_long} (\pi)');
       legend('total\_long');
-   subplot(5,3,14), plot(z2/mm,Delta_Phi_total_s);
+   subplot(5,3,14), plot(z2/mm,Delta_Phi_total_s/pi);
       xlabel('z (mm)');
-      ylabel('\Delta \Phi_{total\_short} (rad)');
+      ylabel('\Delta \Phi_{total\_short} (\pi)');
       legend('total\_short');
    subplot(5,3,3), plot(z2/mm,L_dephasing_l/mm);
       xlabel('z (mm)');
