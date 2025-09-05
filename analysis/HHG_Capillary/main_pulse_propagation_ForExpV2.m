@@ -634,7 +634,7 @@ N_e_raw   = n_gas .* Z_ion;    % uncorrected electron density [m^{-3}]
    Delta_Phi_total_l   = cumsum(Delta_k_total_l)*dz2;
    Delta_Phi_total_s   = cumsum(Delta_k_total_s)*dz2;
 
-   figure;
+   figure; sgtitle('The wavefront is at t=0')
    subplot(5,3,1), plot(z2/mm,Delta_k_plasma);
       xlabel('z (mm)');
       ylabel('\Delta k_{plasma} (1/m)');
