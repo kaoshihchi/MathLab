@@ -1,5 +1,5 @@
 close all; clear;
-
+    addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..', 'theory'));
 %% -------- Constants (SI) --------
 global q_e m_e hbar
 q_e  = 1.602176634e-19;      % C
@@ -15,7 +15,7 @@ tau_fs   = 40;                         % fs
 tau_s    = tau_fs * 1e-15;
 
 E1_mJ = 8.3;      E1_J = E1_mJ * 1e-3; % input.tiff
-E2_mJ = 7.6;    E2_J = E2_mJ * 1e-3; % output.tiff
+E2_mJ = 7.9;    E2_J = E2_mJ * 1e-3; % output.tiff
 
 q         = 45;                        % harmonic order
 lambda_nm = 808;                       % nm
@@ -26,7 +26,7 @@ I_p       = I_p_eV * q_e;              % J
 %% -------- Load images once --------
 bg  = im2double(imread('background.tiff'));
 in1 = im2double(imread('input.tiff'));
-in2 = im2double(imread('output_0.3psi.tiff'));
+in2 = im2double(imread('output_0.12psi.tiff'));
 
 % Background subtraction (clip at 0)
 corr1 = max(in1 - bg, 0);
