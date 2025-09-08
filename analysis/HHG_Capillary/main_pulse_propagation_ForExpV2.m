@@ -1178,8 +1178,8 @@ xlabel('z (mm)'); ylabel('W (1/s)');
 title('5) Ionization rate (t_{shift}=0)');
 
 % (6) Accumulated HHG field (long)
-nexttile; plot(z2_mm, abs(E_HHG_l0)/(max(abs(E_HHG_l0))+eps), 'LineWidth',1.2); grid on;
-xlabel('z (mm)'); ylabel('|E_{HHG,long}| (norm.)');
+nexttile; plot(z2_mm, abs(E_HHG_l0), 'LineWidth',1.2); grid on;
+xlabel('z (mm)'); ylabel('|E_{HHG,long}| (arb. units)');
 title('6) Accumulated HHG field (long, t_{shift}=0)');
 
 % ---- sgtitle ----
@@ -1362,6 +1362,7 @@ W_qwf      = W_n_1_qwf;              % [1/s]
 Eacc_long       = abs(E_HHG_l);
 Eacc_long_norm  = Eacc_long / (max(Eacc_long) + eps);
 
+%%
 % ---------- Plots ----------
 figure('Name','Wavefront variation vs z','Color','w');
 tiledlayout(4,2, 'Padding','compact','TileSpacing','compact');
@@ -1395,17 +1396,17 @@ nexttile; plot(z2_mm, W_qwf, 'LineWidth', 1.2);
 xlabel('z (mm)'); ylabel('W (1/s)'); title('5) Ionization rate');
 
 % 6. Accumulated HHG field (long)
-nexttile; plot(z2_mm, Eacc_long_norm, 'LineWidth', 1.2);
-xlabel('z (mm)'); ylabel('|E_{HHG,long}| (norm.)'); title('6) Accumulated HHG field');
+nexttile; plot(z2_mm, Eacc_long, '-o', 'LineWidth', 1.2);
+xlabel('z (mm)'); ylabel('|E_{HHG,long}| (arb. units)'); title('6) Accumulated HHG field');
 
 sgtitle(sprintf('Wavefront diagnostics (t\\_shift = %.1f fs, q = %d)', t_shift/fs, q));
 set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
 drawnow;
 
 %%
-% outDir = save_all_figs_with_sgtitle('G:\My Drive\Capillary HHG');
-% =======================================================================================
-
+% outDir = save_all_figs_with_sgtitle('D:\Google_BackUp\Capillary HHG');
+% Lib=======================================================================================
+%%
 function outDir = save_all_figs_with_sgtitle(outRoot)
 % save_all_figs_with_sgtitle  Save all open figures using sgtitle/tiledlayout title as the filename.
 %

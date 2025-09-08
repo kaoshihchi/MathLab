@@ -15,7 +15,7 @@ tau_fs   = 40;                         % fs
 tau_s    = tau_fs * 1e-15;
 
 E1_mJ = 8.3;      E1_J = E1_mJ * 1e-3; % input.tiff
-E2_mJ = 7.9;    E2_J = E2_mJ * 1e-3; % output.tiff
+E2_mJ = 7.3;    E2_J = E2_mJ * 1e-3; % output.tiff
 
 q         = 45;                        % harmonic order
 lambda_nm = 808;                       % nm
@@ -26,11 +26,11 @@ I_p       = I_p_eV * q_e;              % J
 %% -------- Load images once --------
 name_bg = 'background.tiff'; 
 name_in1 = 'input.tiff'; 
-name_in2 = 'output_0.12psi.tiff'; 
+name_in2 = 'output_0.64psi.tiff'; 
 
-bg  = im2double(imread('background.tiff'));
-in1 = im2double(imread('input.tiff'));
-in2 = im2double(imread('output_0.12psi.tiff'));
+bg  = im2double(imread(name_bg));
+in1 = im2double(imread(name_in1));
+in2 = im2double(imread(name_in2));
 
 % Background subtraction (clip at 0)
 corr1 = max(in1 - bg, 0);
@@ -63,6 +63,7 @@ centroid_mode = 'weighted';   % <- change to 'weighted' when desired
 % -------- Use it on your two intensity maps --------
 [c1_xy, s1] = locateSpot(I1_Wcm2, centroid_mode);
 [c2_xy, s2] = locateSpot(I2_Wcm2, centroid_mode);
+% c2_xy = [615, 705]; 
 
 x1_um = (c1_xy(1) - 1) * pixel_um;  y1_um = (c1_xy(2) - 1) * pixel_um;
 x2_um = (c2_xy(1) - 1) * pixel_um;  y2_um = (c2_xy(2) - 1) * pixel_um;
