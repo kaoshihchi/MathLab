@@ -1006,7 +1006,7 @@ N_e_qwf = zeros(N2, 1);
     % short-trajectory emission
     E_LH_s = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
 
-% Calculate the accumulated harmonic field
+% Calculate the accumulated harmonic field (Bug: n_source is at t_shift, but driving field is at t0)
    E_HHG_l = cumsum(E_LH_l);
    E_HHG_s = cumsum(E_LH_s);
    E_q_PhaseMatched = n_source.*abs(E_d2_qwf).^5;% phase matched HHG field (as a function of z, column vector)(Z_ion - 1)
@@ -1315,7 +1315,7 @@ end
    fprintf(fid_output,' (arb.units)  (arb.units)  (arb.units)  \r\n');
    fprintf(fid_output,'%d     %6.9f           %6.9f        \r\n', result_HHG_final);
    fclose(fid_output);   
-%-------------------------------------------------------------------------------------------
+%%
 % ================= Wavefront diagnostics vs z (using shifted observer) =================
 z2_mm = z2 / mm;
 
@@ -1323,35 +1323,71 @@ z2_mm = z2 / mm;
 I_qwf = abs(E_t2_qwf).^2 / (2*mu_0*c);          % [W/m^2]
 
 % 2) Plasma density along z AT THE WAVEFRONT (already t_shift-aligned above)
-%    (Keep Ne_z2 only if you want to compare to the smooth fit)
 % Ne_z2 = N_e_cfit(z2)';                        % [1/m^3] (fit, not used below)
 Ne_qwf = N_e_qwf;                                % [1/m^3] (from your wavefront sampling)
 
-% --- Rebuild plasma refractive indices and phase using the wavefront density ---
-% Refractive index at driving and harmonic frequencies (using Ne_qwf)
+% --- Rebuild plasma refractive indices using the wavefront density ---
 n_plasma_d_qwf = sqrt(1 - (q_e^2 .* Ne_qwf) ./ (epsilon_0 * m_e * omega_d^2));
 n_plasma_q_qwf = sqrt(1 - (q_e^2 .* Ne_qwf) ./ (epsilon_0 * m_e * (q*omega_d)^2));
 
 % Wavenumbers in plasma
-k_d_plasma_qwf = k_0      .* n_plasma_d_qwf;          % [1/m]
-k_q_plasma_qwf = (q*k_0)  .* n_plasma_q_qwf;          % [1/m]
+k_d_plasma_qwf = k_0     .* n_plasma_d_qwf;     % [1/m]
+k_q_plasma_qwf = (q*k_0) .* n_plasma_q_qwf;     % [1/m]
 
-% Waveguide terms (keep the same as you used for diagnostics elsewhere)
-% k_d_capillary and k_q_capillary were defined earlier; reuse them here.
-% If k_d_capillary is a scalar, broadcast it:
-k_d_total_qwf = k_d_plasma_qwf + k_d_capillary;       % [1/m]
-k_q_total_qwf = k_q_plasma_qwf + k_q_capillary;       % [1/m]
+% Waveguide terms (reuse your definitions; broadcast if scalar)
+if isscalar(k_d_capillary), k_d_cap_qwf = repmat(k_d_capillary, size(z2));
+else,                       k_d_cap_qwf = k_d_capillary; end
+if isscalar(k_q_capillary), k_q_cap_qwf = repmat(k_q_capillary, size(z2));
+else,                       k_q_cap_qwf = k_q_capillary; end
+
+k_d_total_qwf = k_d_plasma_qwf + k_d_cap_qwf;   % [1/m]
+k_q_total_qwf = k_q_plasma_qwf + k_q_cap_qwf;   % [1/m]
 
 % Plasma-only mismatch and accumulated plasma phase at the wavefront
 Delta_k_plasma_qwf = q*k_d_plasma_qwf - k_q_plasma_qwf;     % [1/m]
 Phi_plasma_qwf     = cumsum(Delta_k_plasma_qwf) * dz2;       % [rad]
 
-% Dipole phase (long) evaluated at the wavefront intensity
-Phi_dip_long       = Phi_dipole_l_cfit(I_qwf)';              % [rad]
-Phi_dip_long_rel   = Phi_dip_long - Phi_dip_long(1);
+% ================= Dipole contribution on q-wf: Δk_dip = α(I) * dI/dz =================
+% α_l(I), α_s(I) evaluated at wavefront intensity
+alpha_l_qwf = alpha_l_cfit(I_qwf)';   % [m^2/W]
+alpha_s_qwf = alpha_s_cfit(I_qwf)';   % [m^2/W]
 
-% Total phase (long) using wavefront plasma phase + same capillary + dipole
-Phi_total_long_qwf     = Phi_plasma_qwf + Delta_Phi_capillary + Phi_dip_long;
+% dI/dz on the q-wavefront (central difference; ends use one-sided)
+dI_dz_qwf = zeros(size(I_qwf));
+if isscalar(dz2)
+    if numel(I_qwf) >= 3
+        dI_dz_qwf(1)        = (I_qwf(2) - I_qwf(1)) / dz2;
+        dI_dz_qwf(2:end-1)  = (I_qwf(3:end) - I_qwf(1:end-2)) / (2*dz2);
+        dI_dz_qwf(end)      = (I_qwf(end) - I_qwf(end-1)) / dz2;
+    else
+        dI_dz_qwf(:) = 0;  % degenerate grid
+    end
+else
+    % nonuniform grid support
+    dI_dz_qwf = gradient(I_qwf(:), z2(:)); 
+    dI_dz_qwf = dI_dz_qwf(:).';
+end
+
+Delta_k_dipole_l_qwf = alpha_l_qwf .* dI_dz_qwf';   % [1/m]
+Delta_k_dipole_s_qwf = alpha_s_qwf .* dI_dz_qwf';   % [1/m]
+
+% ================= Total mismatch at q-wf (t_shift observer) =================
+% Capillary mismatch term (geometry-only) reused
+Delta_k_capillary_qwf = q*k_d_cap_qwf - k_q_cap_qwf;         % [1/m]
+
+Delta_k_total_l_qwf = Delta_k_plasma_qwf + Delta_k_capillary_qwf + Delta_k_dipole_l_qwf;  % [1/m]
+Delta_k_total_s_qwf = Delta_k_plasma_qwf + Delta_k_capillary_qwf + Delta_k_dipole_s_qwf;  % [1/m]
+
+% Accumulated total phase on q-wf (optional diagnostics)
+Delta_Phi_total_l_qwf = cumsum(Delta_k_total_l_qwf) * dz2;   % [rad]
+Delta_Phi_total_s_qwf = cumsum(Delta_k_total_s_qwf) * dz2;   % [rad]
+
+% Dipole phase (long) evaluated at the wavefront intensity
+Phi_dip_long     = Phi_dipole_l_cfit(I_qwf)';                 % [rad]
+Phi_dip_long_rel = Phi_dip_long - Phi_dip_long(1);
+
+% Total phase (long) using q-wf plasma phase + same capillary + dipole
+Phi_total_long_qwf     = Phi_plasma_qwf + Delta_Phi_capillary + Phi_dip_long;  % keep your plotting ref
 Phi_total_long_qwf_rel = Phi_total_long_qwf - Phi_total_long_qwf(1);
 
 % 4) HHG source and 5) Ionization rate at the wavefront (already qwf-based)
@@ -1359,13 +1395,17 @@ Source_HHG = n_source;               % [arb./s]
 W_qwf      = W_n_1_qwf;              % [1/s]
 
 % 6) Accumulated HHG (long) magnitude (normalized)
-Eacc_long       = abs(E_HHG_l);
-Eacc_long_norm  = Eacc_long / (max(Eacc_long) + eps);
+Eacc_long      = abs(E_HHG_l);
+Eacc_long_norm = Eacc_long / (max(Eacc_long) + eps);
+
+% (Optional) coherence lengths at q-wf
+L_dephasing_l_qwf = pi ./ max(abs(Delta_k_total_l_qwf), realmin);  % [m]
+L_dephasing_s_qwf = pi ./ max(abs(Delta_k_total_s_qwf), realmin);  % [m]
 
 %%
 % ---------- Plots ----------
 figure('Name','Wavefront variation vs z','Color','w');
-tiledlayout(4,2, 'Padding','compact','TileSpacing','compact');
+tiledlayout(4,3, 'Padding','compact','TileSpacing','compact');  % <- was (4,2)
 
 % 1. Intensity (q-wf)
 nexttile; plot(z2_mm, I_qwf*1e-4, 'LineWidth', 1.2); % W/cm^2
@@ -1399,9 +1439,22 @@ xlabel('z (mm)'); ylabel('W (1/s)'); title('5) Ionization rate');
 nexttile; plot(z2_mm, Eacc_long, '-o', 'LineWidth', 1.2);
 xlabel('z (mm)'); ylabel('|E_{HHG,long}| (arb. units)'); title('6) Accumulated HHG field');
 
+% 7. Total wavenumber mismatch (q-wf) — long & short on the same axes
+nexttile;
+plot(z2_mm, pi ./ Delta_k_total_l_qwf .*1E3, 'LineWidth', 1.2); hold on;
+plot(z2_mm, pi ./ Delta_k_total_s_qwf .*1E3, 'LineWidth', 1.2);
+yline(0,'k:'); hold off; grid on;
+xlabel('z (mm)'); ylabel('Dephasing length (mm)');
+legend('long','short','0','Location','best');
+title('7) Dephasing length (q-wf)');
+
+% leave the last tile empty (or use it for something else)
+nexttile; axis off;
+
 sgtitle(sprintf('Wavefront diagnostics (t\\_shift = %.1f fs, q = %d)', t_shift/fs, q));
 set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
 drawnow;
+
 
 %%
 % outDir = save_all_figs_with_sgtitle('D:\Google_BackUp\Capillary HHG');
