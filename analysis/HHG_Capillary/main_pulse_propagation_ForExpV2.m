@@ -935,110 +935,103 @@ for ii = 150:150
 N_e_qwf = zeros(N2, 1);
 
 
-% phase of the local harmonic field Phi_HHG(z) = q*Phi_drive(z) + dipole
-% Trace a fixed harmonic wavefront
-   % long-trajectory emission
-   Phi_LH_l = q*Phi_d2_qwf + Phi_dipole_l_cfit(I_d2_qwf)';
-   % short-trajectory emission
-   Phi_LH_s = q*Phi_d2_qwf + Phi_dipole_s_cfit(I_d2_qwf)';
-   
-% Calculate the local harmonic field
-   % long-trajectory emission
-   %Phi_LH_l = Phi_LH_l - Phi_LH_l(1);
-   % Ionization at t_shift wavefront
-   E_t2 = zeros(N,size(time,2));
-   ionizationResult = zeros(8,size(time,2));
-   n_0 = zeros(N,size(time,2));
-   n_1 = zeros(N,size(time,2));
-   n_2 = zeros(N,size(time,2));
-   n_3 = zeros(N,size(time,2));  
-   n_e = zeros(N,size(time,2));   
-   delta_tw = zeros(N,1);
-   n_0_qwf = zeros(N,1); 
-   n_1_qwf = zeros(N,1);    
-   n_2_qwf = zeros(N,1);   
-   n_3_qwf = zeros(N,1);    
-   E_t2_qwf = zeros(N,1);
-   for jj = 1:N     % propagation along z
-        % E_t2(z, t)
-        E_t2(jj,:) = ElectricField_d(time+C_fun(z2(jj))-C_fun(z2(1)),E_peak(jj),omega_d,tau_0,D(jj)-D(1),C_fun(z2(jj))-C_fun(z2(1)),0); 
-        % E_t      = ElectricField_d(time,                           E_peak(1) ,omega_d,tau_0,0         ,0                         ,0);
-        ionizationResult = TunnelingIonizationRate_Linear2((E_t2(jj,:)),omega_d,time+C_fun(z2(jj)),E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,FigureSwitch);
-        ionizationResult = ionizationResult';
-        n_e(jj,:) = ionizationResult(1,:);        
-        n_0(jj,:) = ionizationResult(2,:);
-        n_1(jj,:) = ionizationResult(3,:);
-        n_2(jj,:) = ionizationResult(4,:);
-        n_3(jj,:) = ionizationResult(5,:);  
-        % the observer time at each z for the harmonic wavefront
-        % delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
-        % C_fun: relative delay of the pulse envelope center. Subtracting t2_qwf(jj) aligns your laser field’s “local clock” with the harmonic wavefront clock.
-        delta_tw(jj) = (C_fun(z2(jj)) - C_fun(z2(1)) - t_shift) - t2_qwf(jj); 
-        % If delta_tw(jj) = 0, then idx = center index → the pulse peak.
-        idx = round(0.5*size(time,2)) - round(delta_tw(jj)/DeltaTime);
-        n_0_qwf(jj) = n_0(jj, idx);
-        n_1_qwf(jj) = n_1(jj, idx);
-        n_2_qwf(jj) = n_2(jj, idx);
-        n_3_qwf(jj) = n_3(jj, idx);
-        E_t2_qwf(jj) =  E_t2(jj, idx);
-   end
-   % The plasma density at t_shift
-   Z_ion_qwf = n_1_qwf + 2*n_2_qwf + 3*n_3_qwf; 
-   N_e_qwf = n_gas .* Z_ion_qwf' .* f_avg; 
-  
- %%
-% neutral ~ 1+
-   switch I_p
-    case E_ion_0
-        W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
-        n_source  = n_gas .* n_0_qwf' .* W_n_1_qwf;
-    case E_ion_1
-        W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
-        n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
-    case E_ion_2
-        W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
-        n_source  = n_gas .* n_2_qwf' .* W_n_1_qwf;
-    otherwise
-        error('Unsupported ionization potential I_p = %g', I_p);
-    end
-
-    E_LH_l = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
-    % short-trajectory emission
-    E_LH_s = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
-
-% Calculate the accumulated harmonic field (Bug: n_source is at t_shift, but driving field is at t0)
-   E_HHG_l = cumsum(E_LH_l);
-   E_HHG_s = cumsum(E_LH_s);
-   E_q_PhaseMatched = n_source.*abs(E_d2_qwf).^5;% phase matched HHG field (as a function of z, column vector)(Z_ion - 1)
-   E_q_PhaseMatched_final = cumsum(E_q_PhaseMatched);
-   E_q_PhaseMatched_final_max = max(E_q_PhaseMatched_final); %max(E_q_PhaseMatched_final);
+% % phase of the local harmonic field Phi_HHG(z) = q*Phi_drive(z) + dipole
+% % Trace a fixed harmonic wavefront
+%    % long-trajectory emission
+%    Phi_LH_l = q*Phi_d2_qwf + Phi_dipole_l_cfit(I_d2_qwf)';
+%    % short-trajectory emission
+%    Phi_LH_s = q*Phi_d2_qwf + Phi_dipole_s_cfit(I_d2_qwf)';
+%    
+% % Calculate the local harmonic field
+%    % long-trajectory emission
+%    %Phi_LH_l = Phi_LH_l - Phi_LH_l(1);
+%    
+%    % Ionization at t_shift wavefront
+%    E_t2 = zeros(N,size(time,2));
+%    ionizationResult = zeros(8,size(time,2));
+%    n_0 = zeros(N,size(time,2));
+%    n_1 = zeros(N,size(time,2));
+%    n_2 = zeros(N,size(time,2));
+%    n_3 = zeros(N,size(time,2));  
+%    n_e = zeros(N,size(time,2));   
+%    delta_tw = zeros(N,1);
+%    n_0_qwf = zeros(N,1); 
+%    n_1_qwf = zeros(N,1);    
+%    n_2_qwf = zeros(N,1);   
+%    n_3_qwf = zeros(N,1);    
+%    E_t2_qwf = zeros(N,1);
+%    for jj = 1:N     % propagation along z, t_shift = 0
+%         % E_t2(z, t)
+%         E_t2(jj,:) = ElectricField_d(time+C_fun(z2(jj))-C_fun(z2(1)),E_peak(jj),omega_d,tau_0,D(jj)-D(1),C_fun(z2(jj))-C_fun(z2(1)),0); 
+%         % E_t      = ElectricField_d(time,                           E_peak(1) ,omega_d,tau_0,0         ,0                         ,0);
+%         ionizationResult = TunnelingIonizationRate_Linear2((E_t2(jj,:)),omega_d,time+C_fun(z2(jj)),E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,FigureSwitch);
+%         ionizationResult = ionizationResult';
+%         n_e(jj,:) = ionizationResult(1,:);        
+%         n_0(jj,:) = ionizationResult(2,:);
+%         n_1(jj,:) = ionizationResult(3,:);
+%         n_2(jj,:) = ionizationResult(4,:);
+%         n_3(jj,:) = ionizationResult(5,:);  
+%         % the observer time at each z for the harmonic wavefront
+%         % delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
+%         % C_fun: relative delay of the pulse envelope center. Subtracting t2_qwf(jj) aligns your laser field’s “local clock” with the harmonic wavefront clock.
+%         delta_tw(jj) = (C_fun(z2(jj)) - C_fun(z2(1)) - t_shift) - t2_qwf(jj); 
+%         % If delta_tw(jj) = 0, then idx = center index → the pulse peak.
+%         idx = round(0.5*size(time,2)) - round(delta_tw(jj)/DeltaTime);
+%         n_0_qwf(jj) = n_0(jj, idx);
+%         n_1_qwf(jj) = n_1(jj, idx);
+%         n_2_qwf(jj) = n_2(jj, idx);
+%         n_3_qwf(jj) = n_3(jj, idx);
+%         E_t2_qwf(jj) =  E_t2(jj, idx);
+%    end
+%    % The plasma density at t_shift
+%    Z_ion_qwf = n_1_qwf + 2*n_2_qwf + 3*n_3_qwf; 
+%    N_e_qwf = n_gas .* Z_ion_qwf' .* f_avg; 
+%   
+%  %%
+% % neutral ~ 1+
+%    switch I_p
+%     case E_ion_0
+%         W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf));
+%         n_source  = n_gas .* n_0_qwf' .* W_n_1_qwf;
+%     case E_ion_1
+%         W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf));
+%         n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
+%     case E_ion_2
+%         W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf));
+%         n_source  = n_gas .* n_2_qwf' .* W_n_1_qwf;
+%     otherwise
+%         error('Unsupported ionization potential I_p = %g', I_p);
+%     end
+% 
+%     E_LH_l = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
+%     % short-trajectory emission
+%     E_LH_s = n_source .* abs(E_d2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
+% 
+% % Calculate the accumulated harmonic field (Bug: n_source is at t_shift, but driving field is at t0)
+%    E_HHG_l = cumsum(E_LH_l);
+%    E_HHG_s = cumsum(E_LH_s);
+%    E_q_PhaseMatched = n_source.*abs(E_d2_qwf).^5;% phase matched HHG field (as a function of z, column vector)(Z_ion - 1)
+%    E_q_PhaseMatched_final = cumsum(E_q_PhaseMatched);
+%    E_q_PhaseMatched_final_max = max(E_q_PhaseMatched_final); %max(E_q_PhaseMatched_final);
 %%   
    figure; % driving field check
-   subplot(5,1,1), plot(z2/mm,abs(E_d2_dwf),z2/mm,abs(E_d2_qwf),z/mm,E_peak);
+   subplot(3,1,1), plot(z2/mm,abs(E_d2_dwf),z2/mm,abs(E_d2_qwf),z/mm,E_peak);
       xlabel('z (mm)');
       ylabel('|E| (V/m)');
       legend('fixed d-wf','fixed q-wf','E_{peak}','Location','SouthWest');
       title('driving field amplitude')
-   subplot(5,1,2)
+   subplot(3,1,2)
         plot(z2/mm, (t2_dwf - (C_fun(z2)'-C_fun(0)' - t_shift))/fs, ...
              z2/mm, (t2_qwf - (C_fun(z2)'-C_fun(0)' - t_shift))/fs, 'LineWidth',1.2);
         xlabel('z (mm)');
         ylabel('\Delta t (fs)');
         legend('t2_{dwf} - C(z)','t2_{qwf} - C(z)','Location','SouthWest');
         title('time difference');
-   subplot(5,1,3), plot(z2/mm,Phi_d2_dwf,z2/mm,Phi_d2_qwf);
+   subplot(3,1,3), plot(z2/mm,Phi_d2_dwf,z2/mm,Phi_d2_qwf);
       xlabel('z (mm)');
       ylabel('\Phi_{d2} (rad)');
       legend('fixed d-wf','fixed q-wf','Location','SouthWest');
       title('phase of the driving pulse')
-   subplot(5,1,4), plot(z2/mm,n_source*1E-6);
-      xlabel('z (mm)');
-      ylabel('Source Rate(Hz cm^{-3})');
-      title('Source');
-   subplot(5,1,5), plot(z2/mm,W_n_1_qwf);
-      xlabel('z (mm)');
-      ylabel('Ionization rate (Hz)');
-      title('Ionization rate');
    set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
     drawnow;
  %%  
@@ -1209,7 +1202,95 @@ set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
 %    fclose(fid_output);          
 %       
  %%     
- % ==== Figure: q-th HHG wavefront diagnostics (q-wf) ====
+ % ==== Figure: q-th HHG wavefront diagnostics (q-wf) ==== t_shift
+% phase of the local harmonic field Phi_HHG(z) = q*Phi_drive(z) + dipole
+% Trace a fixed harmonic wavefront
+%    % long-trajectory emission
+%    Phi_LH_l = q*Phi_d2_qwf + Phi_dipole_l_cfit(E_t2_qwf)';
+%    % short-trajectory emission
+%    Phi_LH_s = q*Phi_d2_qwf + Phi_dipole_s_cfit(E_t2_qwf)';
+   
+% Calculate the local harmonic field
+   % long-trajectory emission
+   %Phi_LH_l = Phi_LH_l - Phi_LH_l(1);
+   
+   % Ionization at t_shift wavefront
+   E_t2 = zeros(N,size(time,2));
+   ionizationResult = zeros(8,size(time,2));
+   n_0 = zeros(N,size(time,2));
+   n_1 = zeros(N,size(time,2));
+   n_2 = zeros(N,size(time,2));
+   n_3 = zeros(N,size(time,2));  
+   n_e = zeros(N,size(time,2));   
+   delta_tw = zeros(N,1);
+   n_0_qwf = zeros(N,1); 
+   n_1_qwf = zeros(N,1);    
+   n_2_qwf = zeros(N,1);   
+   n_3_qwf = zeros(N,1);    
+   E_t2_qwf = zeros(N,1);
+   
+   for jj = 1:N     % propagation along z, t_shift
+        % E_t2(z, t)
+        E_t2(jj,:) = ElectricField_d(time+C_fun(z2(jj))-C_fun(z2(1)),E_peak(jj),omega_d,tau_0,D(jj)-D(1),C_fun(z2(jj))-C_fun(z2(1)),0); 
+        % E_t      = ElectricField_d(time,                           E_peak(1) ,omega_d,tau_0,0         ,0                         ,0);
+        ionizationResult = TunnelingIonizationRate_Linear2((E_t2(jj,:)),omega_d,time+C_fun(z2(jj)),E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,FigureSwitch);
+        ionizationResult = ionizationResult';
+        n_e(jj,:) = ionizationResult(1,:);        
+        n_0(jj,:) = ionizationResult(2,:);
+        n_1(jj,:) = ionizationResult(3,:);
+        n_2(jj,:) = ionizationResult(4,:);
+        n_3(jj,:) = ionizationResult(5,:);  
+        % the observer time at each z for the harmonic wavefront
+        % delta_tw(jj) = C_fun(z2(jj))-C_fun(z2(1)) - t2_qwf(jj);
+        % C_fun: relative delay of the pulse envelope center. Subtracting t2_qwf(jj) aligns your laser field’s “local clock” with the harmonic wavefront clock.
+        delta_tw(jj) = (C_fun(z2(jj)) - C_fun(z2(1)) - t_shift) - t2_qwf(jj); 
+        % If delta_tw(jj) = 0, then idx = center index → the pulse peak.
+        idx = round(0.5*size(time,2)) - round(delta_tw(jj)/DeltaTime);
+        n_0_qwf(jj) = n_0(jj, idx);
+        n_1_qwf(jj) = n_1(jj, idx);
+        n_2_qwf(jj) = n_2(jj, idx);
+        n_3_qwf(jj) = n_3(jj, idx);
+        E_t2_qwf(jj) =  E_t2(jj, idx);
+        E_t2_qwf = E_t2_qwf.';    % transpose (row → column)
+   end
+   I_Et2_qwf = abs(E_t2_qwf).^2 / (2*mu_0*c);    % [W/m^2]
+   Phi_t2_qwf = angle(E_t2_qwf); 
+   % long-trajectory emission
+   Phi_LH_l = q*Phi_t2_qwf + Phi_dipole_l_cfit(I_Et2_qwf)';
+   % short-trajectory emission
+   Phi_LH_s = q*Phi_t2_qwf + Phi_dipole_s_cfit(I_Et2_qwf)';
+   
+   % The plasma density at t_shift
+   Z_ion_qwf = n_1_qwf + 2*n_2_qwf + 3*n_3_qwf; 
+   N_e_qwf = n_gas .* Z_ion_qwf' .* f_avg; 
+  
+ %%
+% neutral ~ 1+
+   switch I_p
+    case E_ion_0
+        W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_t2_qwf));
+        n_source  = n_gas .* n_0_qwf' .* W_n_1_qwf;
+    case E_ion_1
+        W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_t2_qwf));
+        n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
+    case E_ion_2
+        W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_t2_qwf));
+        n_source  = n_gas .* n_2_qwf' .* W_n_1_qwf;
+    otherwise
+        error('Unsupported ionization potential I_p = %g', I_p);
+   end
+    % There is a problem than E_LH_1 should be a matrix
+    E_LH_l = n_source .* abs(E_t2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
+    % short-trajectory emission
+    E_LH_s = n_source .* abs(E_t2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
+
+% Calculate the accumulated harmonic field (Bug: n_source is at t_shift, but driving field is at t0)
+   E_HHG_l = cumsum(E_LH_l);
+   E_HHG_s = cumsum(E_LH_s);
+   E_q_PhaseMatched = n_source.*abs(E_t2_qwf).^5;% phase matched HHG field (as a function of z, column vector)(Z_ion - 1)
+   E_q_PhaseMatched_final = cumsum(E_q_PhaseMatched);
+   E_q_PhaseMatched_final_max = max(E_q_PhaseMatched_final); %max(E_q_PhaseMatched_final); 
+%----------------------------------------------------------------
 fig9 = figure('Color','w'); 
 tiledlayout(fig9,2,2,'Padding','compact','TileSpacing','compact');
 
@@ -1368,8 +1449,8 @@ else
     dI_dz_qwf = dI_dz_qwf(:).';
 end
 
-Delta_k_dipole_l_qwf = alpha_l_qwf .* dI_dz_qwf';   % [1/m]
-Delta_k_dipole_s_qwf = alpha_s_qwf .* dI_dz_qwf';   % [1/m]
+Delta_k_dipole_l_qwf = alpha_l_qwf .* dI_dz_qwf;   % [1/m]
+Delta_k_dipole_s_qwf = alpha_s_qwf .* dI_dz_qwf;   % [1/m]
 
 % ================= Total mismatch at q-wf (t_shift observer) =================
 % Capillary mismatch term (geometry-only) reused
@@ -1436,7 +1517,7 @@ nexttile; plot(z2_mm, W_qwf, 'LineWidth', 1.2);
 xlabel('z (mm)'); ylabel('W (1/s)'); title('5) Ionization rate');
 
 % 6. Accumulated HHG field (long)
-nexttile; plot(z2_mm, Eacc_long, '-o', 'LineWidth', 1.2);
+nexttile; plot(z2_mm, Eacc_long, '-', 'LineWidth', 1.2);
 xlabel('z (mm)'); ylabel('|E_{HHG,long}| (arb. units)'); title('6) Accumulated HHG field');
 
 % 7. Total wavenumber mismatch (q-wf) — long & short on the same axes
