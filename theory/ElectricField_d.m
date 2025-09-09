@@ -12,7 +12,7 @@
 %   t          : Time array [s]
 %   E_peak     : Peak electric field amplitude at position z [V/m]
 %   omega_d    : Driving laser angular frequency [rad/s]
-%   tau_0      : Initial pulse duration (FWHM/√(2ln2)) at z=0 [s]
+%   tau_0      : Initial pulse duration (FWHM/1.665) at z=0 [s]
 %   D          : Accumulated group-delay dispersion (GDD) at position z [s^2]
 %   C          : Group delay (arrival time shift of the pulse envelope) [s]
 %   phi_d_prop : Accumulated propagation phase of the driving field [rad]

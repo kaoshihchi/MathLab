@@ -1183,26 +1183,8 @@ else
 end
 set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
     drawnow;
-%% 
-%    % Export results (usual units)
-%    result_Dispersion(1,:) = z2/mm;                      % position (mm)
-%    result_Dispersion(2,:) = Delta_Phi_plasma/pi;       % plasma dispersion (rad/pi)
-%    result_Dispersion(3,:) = Delta_Phi_capillary/pi;    % capillary dispersion (rad/pi)
-%    result_Dispersion(4,:) = Phi_dip_long0_rel/pi;     % dipole phase - long (rad/pi)
-%    result_Dispersion(5,:) = Phi_/pi;     % dipole phase - long (rad/pi)
-%    result_Dispersion(6,:) = Delta_Phi_total_L_qwf/pi;      % total phase - long (rad/pi)
-%    result_Dispersion(7,:) = Delta_Phi_total_S_qwf/pi;      % total phase - short (rad/pi))
-%    result_Dispersion(8,:) = I_peak*1e-4;                   % peak intensity
-%    result_Dispersion(9,:) = I_d2_qwf*1e-4;                 % qfw intensity
-% 
-%    fid_output = fopen('DispersionSource_qwf.txt','w');
-%    fprintf(fid_output,'position   Delta_Phi_plasma  Delta_Phi_capillary  Delta_Phi_dipole_l   Delta_Phi_dipole_s         Delta_Phi_total_l        Delta_Phi_total_s    I_peak    I_d2_qwf     \r\n');
-%    fprintf(fid_output,'(mm)       (rad/pi)          (rad/pi)             (rad/pi)             (rad/pi)                   (rad/pi)                 (rad/pi)             (W/cm^2)  (W/cm^2)     \r\n');
-%    fprintf(fid_output,'%5.9e       %5.9e            %5.9e                %5.9e                %5.9e                      %5.9e                    %5.9e                %5.9e     %5.9e        \r\n',result_Dispersion);
-%    fclose(fid_output);          
-%       
- %%     
- % ==== Figure: q-th HHG wavefront diagnostics (q-wf) ==== t_shift
+%%     
+% ==== Figure: q-th HHG wavefront diagnostics (q-wf) ==== t_shift
 % phase of the local harmonic field Phi_HHG(z) = q*Phi_drive(z) + dipole
 % Trace a fixed harmonic wavefront
 %    % long-trajectory emission
@@ -1251,43 +1233,73 @@ set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
         n_2_qwf(jj) = n_2(jj, idx);
         n_3_qwf(jj) = n_3(jj, idx);
         E_t2_qwf(jj) =  E_t2(jj, idx);
-        E_t2_qwf = E_t2_qwf.';    % transpose (row → column)
+        % E_t2_qwf = E_t2_qwf.';    % transpose (row → column)
    end
-   I_Et2_qwf = abs(E_t2_qwf).^2 / (2*mu_0*c);    % [W/m^2]
-   Phi_t2_qwf = angle(E_t2_qwf); 
+    % The plasma density at t_shift
+   Z_ion_qwf = n_1_qwf + 2*n_2_qwf + 3*n_3_qwf; 
+   N_e_qwf = n_gas .* Z_ion_qwf' .* f_avg; 
+
+% k_d_capillary is your geometry term for the driving field.
+% If it’s a scalar, this will broadcast.
+k_d_cap_qwf = k_d_capillary;  % keep same symbol for clarity
+
+% Build k_total(z, t_shift) on z2 using Ne_qwf (1-by-N2)
+n_plasma_d_qwf = sqrt(1 - (q_e^2 .* N_e_qwf) ./ (epsilon_0 * m_e * omega_d^2));
+k_d_total_qwf  = k_0 .* n_plasma_d_qwf + k_d_cap_qwf;
+
+% Accumulated propagation phase at t_shift (z-referenced)
+phi_d_prop_qwf = cumtrapz(z2, k_d_total_qwf);  % 1-by-N2
+phi_d_prop_qwf = phi_d_prop_qwf - phi_d_prop_qwf(1);
+
+% Now generate the field at the shifted observer
+E_d2_qwf_tshift = zeros(1, N2);
+for j = 1:N2
+    t_obs = t2_qwf(j) + t_shift;
+    E_d2_qwf_tshift(j) = ElectricField_d( ...
+        t_obs, E_peak_cfit(z2(j)), omega_d, tau_0, ...
+        D_fun(z2(j)) - D_fun(z2(1)), ...
+        C_fun(z2(j)) - C_fun(z2(1)), ...
+        phi_d_prop_qwf(j) );
+end
+
+
+
+   I_Et2_qwf = abs(E_d2_qwf_tshift).^2 / (2*mu_0*c);    % [W/m^2]
+   Phi_t2_qwf = angle(E_d2_qwf_tshift); 
    % long-trajectory emission
    Phi_LH_l = q*Phi_t2_qwf + Phi_dipole_l_cfit(I_Et2_qwf)';
    % short-trajectory emission
    Phi_LH_s = q*Phi_t2_qwf + Phi_dipole_s_cfit(I_Et2_qwf)';
    
-   % The plasma density at t_shift
-   Z_ion_qwf = n_1_qwf + 2*n_2_qwf + 3*n_3_qwf; 
-   N_e_qwf = n_gas .* Z_ion_qwf' .* f_avg; 
+   
   
  %%
 % neutral ~ 1+
    switch I_p
     case E_ion_0
-        W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_t2_qwf));
+        W_n_1_qwf = StaticIonizationRate(E_ion_0, abs(E_d2_qwf_tshift));
+        %W_n_1_qwf = W_n_1_qwf';
         n_source  = n_gas .* n_0_qwf' .* W_n_1_qwf;
     case E_ion_1
-        W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_t2_qwf));
+        W_n_1_qwf = StaticIonizationRate(E_ion_1, abs(E_d2_qwf_tshift));
+        %W_n_1_qwf = W_n_1_qwf';
         n_source  = n_gas .* n_1_qwf' .* W_n_1_qwf;
     case E_ion_2
-        W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_t2_qwf));
+        W_n_1_qwf = StaticIonizationRate(E_ion_2, abs(E_d2_qwf_tshift));
+        %W_n_1_qwf = W_n_1_qwf';
         n_source  = n_gas .* n_2_qwf' .* W_n_1_qwf;
     otherwise
         error('Unsupported ionization potential I_p = %g', I_p);
    end
     % There is a problem than E_LH_1 should be a matrix
-    E_LH_l = n_source .* abs(E_t2_qwf).^5 .* exp(1i*Phi_LH_l);    % arb. units
+    E_LH_l = n_source .* abs(E_d2_qwf_tshift).^5 .* exp(1i*Phi_LH_l);    % arb. units
     % short-trajectory emission
-    E_LH_s = n_source .* abs(E_t2_qwf).^5 .* exp(1i*Phi_LH_s);    % arb. units
+    E_LH_s = n_source .* abs(E_d2_qwf_tshift).^5 .* exp(1i*Phi_LH_s);    % arb. units
 
 % Calculate the accumulated harmonic field (Bug: n_source is at t_shift, but driving field is at t0)
    E_HHG_l = cumsum(E_LH_l);
    E_HHG_s = cumsum(E_LH_s);
-   E_q_PhaseMatched = n_source.*abs(E_t2_qwf).^5;% phase matched HHG field (as a function of z, column vector)(Z_ion - 1)
+   E_q_PhaseMatched = n_source.*abs(E_d2_qwf_tshift).^5;% phase matched HHG field (as a function of z, column vector)(Z_ion - 1)
    E_q_PhaseMatched_final = cumsum(E_q_PhaseMatched);
    E_q_PhaseMatched_final_max = max(E_q_PhaseMatched_final); %max(E_q_PhaseMatched_final); 
 %----------------------------------------------------------------
@@ -1401,7 +1413,7 @@ end
 z2_mm = z2 / mm;
 
 % 1) Intensity at wavefront (harmonic-frame)
-I_qwf = abs(E_t2_qwf).^2 / (2*mu_0*c);          % [W/m^2]
+I_qwf = abs(E_d2_qwf_tshift).^2 / (2*mu_0*c);          % [W/m^2]
 
 % 2) Plasma density along z AT THE WAVEFRONT (already t_shift-aligned above)
 % Ne_z2 = N_e_cfit(z2)';                        % [1/m^3] (fit, not used below)
@@ -1477,7 +1489,10 @@ W_qwf      = W_n_1_qwf;              % [1/s]
 
 % 6) Accumulated HHG (long) magnitude (normalized)
 Eacc_long      = abs(E_HHG_l);
-Eacc_long_norm = Eacc_long / (max(Eacc_long) + eps);
+
+   E_q_PhaseMatched = n_source.*abs(E_d2_qwf_tshift).^5;% phase matched HHG field (as a function of z, column vector)(Z_ion - 1)
+   E_q_PhaseMatched_final = cumsum(E_q_PhaseMatched);
+   E_q_PhaseMatched_final_max = max(E_q_PhaseMatched_final); %max(E_q_PhaseMatched_final);
 
 % (Optional) coherence lengths at q-wf
 L_dephasing_l_qwf = pi ./ max(abs(Delta_k_total_l_qwf), realmin);  % [m]
@@ -1489,7 +1504,7 @@ figure('Name','Wavefront variation vs z','Color','w');
 tiledlayout(4,3, 'Padding','compact','TileSpacing','compact');  % <- was (4,2)
 
 % 1. Intensity (q-wf)
-nexttile; plot(z2_mm, I_qwf*1e-4, 'LineWidth', 1.2); % W/cm^2
+nexttile; plot(z2_mm, I_Et2_qwf*1e-4, 'LineWidth', 1.2); % W/cm^2
 xlabel('z (mm)'); ylabel('I_{qwf} (W/cm^2)'); title('1) Intensity at wavefront');
 
 % 2. Plasma density (q-wf)
@@ -1506,11 +1521,11 @@ xlabel('z (mm)'); ylabel('\Delta\Phi_{dip,long} (\pi)'); title('3) Dipole phase 
 
 % 3.5 Total phase (long, q-wf)
 nexttile; plot(z2_mm, Phi_total_long_qwf_rel/pi, 'LineWidth', 1.2);
-xlabel('z (mm)'); ylabel('\Delta\Phi_{total,long} (\pi)'); title('3.5) Total phase (long)');
+xlabel('z (mm)'); ylabel('\Delta\Phi_{total,long} (\pi)'); title('3.5) Total phase, \Deltak (long)');
 
 % 3.5 Total phase 2 (long, q-wf)
 nexttile; plot(z2_mm, Phi_LH_l/pi, 'LineWidth', 1.2);
-xlabel('z (mm)'); ylabel('\Delta\Phi_{total 2,long} (\pi)'); title('3.5) Total phase (long)');
+xlabel('z (mm)'); ylabel('\Delta\Phi_{total,long} (\pi)'); title('3.6) Total phase (long)');
 
 % 4. HHG source (q-wf)
 nexttile; plot(z2_mm, Source_HHG, 'LineWidth', 1.2);
@@ -1522,12 +1537,13 @@ xlabel('z (mm)'); ylabel('W (1/s)'); title('5) Ionization rate');
 
 % 6. Accumulated HHG field (long)
 nexttile; plot(z2_mm, Eacc_long, '-', 'LineWidth', 1.2);
+legend(['long, end=',num2str(abs(Eacc_long(end))/E_q_PhaseMatched_final_max)],'Location','southeast');
 xlabel('z (mm)'); ylabel('|E_{HHG,long}| (arb. units)'); title('6) Accumulated HHG field');
 
 % 7. Total wavenumber mismatch (q-wf) — long & short on the same axes
 nexttile;
-plot(z2_mm, pi ./ Delta_k_total_l_qwf .*1E3, 'LineWidth', 1.2); hold on;
-plot(z2_mm, pi ./ Delta_k_total_s_qwf .*1E3, 'LineWidth', 1.2);
+plot(z2_mm, abs(pi ./ Delta_k_total_l_qwf .*1E3), 'LineWidth', 1.2); hold on;
+plot(z2_mm, abs(pi ./ Delta_k_total_s_qwf .*1E3), 'LineWidth', 1.2);
 yline(0,'k:'); hold off; grid on;
 xlabel('z (mm)'); ylabel('Dephasing length (mm)');
 legend('long','short','0','Location','best');
