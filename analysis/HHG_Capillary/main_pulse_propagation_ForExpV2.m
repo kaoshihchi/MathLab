@@ -1210,7 +1210,7 @@ set(gcf,'WindowState','maximized');  % R2018a+ for regular figures
 %    % short-trajectory emission
 %    Phi_LH_s = q*Phi_d2_qwf + Phi_dipole_s_cfit(E_t2_qwf)';
    
-% Calculate the local harmonic field
+% Calculate the local harmonic field at t_shift
    % long-trajectory emission
    %Phi_LH_l = Phi_LH_l - Phi_LH_l(1);
    
@@ -1507,6 +1507,10 @@ xlabel('z (mm)'); ylabel('\Delta\Phi_{dip,long} (\pi)'); title('3) Dipole phase 
 % 3.5 Total phase (long, q-wf)
 nexttile; plot(z2_mm, Phi_total_long_qwf_rel/pi, 'LineWidth', 1.2);
 xlabel('z (mm)'); ylabel('\Delta\Phi_{total,long} (\pi)'); title('3.5) Total phase (long)');
+
+% 3.5 Total phase 2 (long, q-wf)
+nexttile; plot(z2_mm, Phi_LH_l/pi, 'LineWidth', 1.2);
+xlabel('z (mm)'); ylabel('\Delta\Phi_{total 2,long} (\pi)'); title('3.5) Total phase (long)');
 
 % 4. HHG source (q-wf)
 nexttile; plot(z2_mm, Source_HHG, 'LineWidth', 1.2);
