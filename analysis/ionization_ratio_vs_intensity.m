@@ -21,7 +21,7 @@ hbar = h/(2*pi);
 % Laser parameters
 lambda  = 800e-9;                 % wavelength (m)
 omega_d = 2*pi*c/lambda;         % angular frequency (rad/s)
-tau     = 30*fs;                  % pulse duration (1/e) (s)
+tau     = 40/1.2*fs;                  % pulse duration (1/e) (s)
 
 % Time vector for field calculation
 t = (-200:0.2:200)*fs;
@@ -61,7 +61,8 @@ ylabel('Average ionization state');
 legend({'Ar','Ne','He'}, 'Location', 'northwest');
 title('Ionization ratio vs laser intensity');
 
-% Save plot to file
-outputFile = fullfile(scriptDir, 'ionization_ratio.png');
-print(outputFile, '-dpng');
-disp(['Ionization ratio plot saved to ', outputFile]);
+% Save plot to .fig file
+outputFile = fullfile(scriptDir, 'ionization_ratio.fig');
+savefig(gcf, outputFile);
+disp(['Ionization ratio figure saved to ', outputFile]);
+
