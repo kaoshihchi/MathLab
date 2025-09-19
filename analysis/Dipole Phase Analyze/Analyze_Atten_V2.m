@@ -29,21 +29,21 @@ pixel_m  = pixel_um * 1e-6;
 tau_fs   = 40;                          % fs
 tau_s    = tau_fs * 1e-15;
 
-E1_mJ = 8.3;    E1_J = E1_mJ * 1e-3;   % input.tiff
-E2_mJ = 7.6;    E2_J = E2_mJ * 1e-3;   % output.tiff
+E1_mJ = 4*0.8;    E1_J = E1_mJ * 1e-3;   % input.tiff
+E2_mJ = 4*0.8*0.8;    E2_J = E2_mJ * 1e-3;   % output.tiff
 
-q         = 45;                        % (kept for context)
+q         = 101;                        % (kept for context)
 lambda_nm = 808;                       % nm
 omega_d   = 2*pi*c/(lambda_nm*1e-9);   %#ok<NASGU>
 
 % Files
-name_bg  = 'background.tiff';
-name_in1 = 'input.tiff';
-name_in2 = 'output_0.3psi.tiff';
+name_bg  = 'background_He.tiff';
+name_in1 = 'input_He.tiff';
+name_in2 = 'output_He.tiff';
 
 % Centroid mode and (optional) manual override for output center
 centroid_mode = 'geometric';           % 'weighted' or 'geometric'
-override_c2   = [615, 705];            % [] to disable, or [x,y]
+override_c2   = [];            % [] to disable, or [x,y]
 
 % Separation along z for attenuation
 dz_m = 8e-3;                           % 8 mm
