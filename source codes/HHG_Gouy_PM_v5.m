@@ -1,0 +1,1759 @@
+% HHG_Gouy_PM.m version 4
+%
+%  Version 2: Use interpolation instead of curve fitting.
+%  Version 3: Add the choice of HHG wavefront initial time t0.
+%  Version 4: Use the time-averaged electron density for the calculation of
+%             driving pulse energy loss and propagation, instead of the
+%             final electron density.
+%             Use the transient electron density for the calculation of HHG
+%             phase matching, instead of the final electron density.
+%             Remove the calculation of phase-matching on the driving pulse
+%             peak, just focus on a fixed harmonic wavefront.
+%
+%  Part I:
+%    Calculate the propagation of the focused driving pulse in gas medium.
+%    1. Consider ionization loss, ATI heating loss, inverse Bremsstrahlung
+%       heating loss, and Thomson scattering loss.
+%    2. Consider the Gouy phase shift and plasma dispersion.
+%    3. Consider the 3D Gaussian pulse with cylindrical symmetry: E(z,r,t).
+%    4. SI units.
+%
+%  Part II:
+%    Calculate the HHG along the z-axis (r = 0).
+%
+%    Syntax:
+%       HHG_Gouy_PM('ParameterFilename',FigureSwitch)
+%
+%       FigureSwitch: figure switch of ionization
+%                     = 1: figure ON, = 0: figure OFF.
+%
+%  Returned value:
+%
+%  Example:
+%     a = HHG_Gouy_PM_v4('HHG_Gouy_PM_v4_Parameters.txt',1);
+%
+%     Author: Hsu-hsin Chu (2024/2/28)
+% Modified by Kao 
+close all
+clear
+
+ParameterFilename = 'HHG_Gouy_PM_v4_Parameters_40um_42mJ.txt'; 
+FigureSwitch = 1; 
+
+clear global;
+
+% Unit conversion
+   global eV
+   global cm
+   global mm
+   global um
+   global nm
+   global fs
+   global mJ
+   eV   = 1.602 * 10^(-19);          % 1 (eV) = 1.6*10^(-19) (J)
+   cm   = 10^(-2);                   % 1 (cm) = 10^(-2) (m)
+   mm   = 10^(-3);                   % 1 (mm) = 10^(-3) (m)
+   um   = 10^(-6);                   % 1 (um) = 10^(-6) (m)
+   nm   = 10^(-9);                   % 1 (nm) = 10^(-9) (m)
+   fs   = 10^(-15);                  % 1 (fs) = 10^(-15)(sec)
+   mJ   = 10^(-3);                   % 1 (mJ) = 10^(-3) (J)
+
+% Physical constants
+   global c
+   global q_e
+   global m_e
+   global mu_0
+   global epsilon_0
+   global h
+   global hbar
+   c    = 2.99792458 * 10^8;         % speed of light (m/sec)
+   q_e  = 1.602 * 10^(-19);          % electron charge (Coul)
+   m_e  = 9.101 * 10^(-31);          % electron mass (kg)
+   mu_0 = 4 * pi * 10^(-7);          % permeability of vacuum (Nt/Amp^2)
+   epsilon_0 = 8.854*10^-12;         % permittivity of vacuum (F/m)
+   h    = 6.626 * 10^(-34);          % Planck's constant (J-sec)
+   hbar = h/(2*pi);
+     
+% Load the parameter file
+   fid = fopen(ParameterFilename,'r');
+   while feof(fid) == 0
+      line = fgetl(fid);
+      eval(line);
+   end
+   fclose(fid);
+
+% Laser parameters
+   omega_d = 2 * pi * c / lambda_d;  % laser angular frequency (rad/sec)
+   k_0     = 2 * pi / lambda_d;      % laser wavenumber in vacuum (1/m)
+   % laser peak intensity at the focal spot (W/m^2)
+   I_0 = 2 * PulseEnergy / (pi^1.5 * tau_0 * w0^2);
+   % laser peak electric field at the focal spot (V/m)
+   E_0 = sqrt(2*mu_0*c*I_0); 
+   
+% Set the coordinate and variables
+   z_fin = z_ini + L;           % final position (m)
+   z     = [z_ini:dz:z_fin];    % Generate longitudinal coordinate z (unit: m)
+   N_z   = size(z,2);           % number of data points in z-axis
+
+   tau         = zeros(1,N_z);  % laser pulse duration at z (sec)
+   q           = zeros(1,N_z);  % laser q-parameter at z (m)
+   b           = zeros(1,N_z);  % laser confocal parameter at z (m)
+   zz          = zeros(1,N_z);  % q(z) = zz(z) - ib(z) at z (m)
+   w           = zeros(1,N_z);  % laser beam size at z (m)
+   R           = zeros(1,N_z);  % laser wavefront radius of curvature at z (m)
+   LaserEnergy = zeros(1,N_z);  % laser pulse energy (J)
+   I_peak      = zeros(1,N_z);  % laser peak intensity at z (W/m^2)
+   E_peak      = zeros(1,N_z);  % laser peak electric field at z (V/m)
+
+   Z_ion       = zeros(3,N_z);  % final ionization state (3 rows for r = 0,w/2,w)
+   N_e         = zeros(3,N_z);  % final electron density N_e(t=inf,z) (1/m^3) (3 rows for r = 0,w/2,w)
+   N_e_ave     = zeros(3,N_z);  % time-averaged electron density (1/m^3) (3 rows for r = 0,w/2,w)
+   N_atom      = zeros(3,N_z);  % final atom density N_atom(t=inf,z) (1/m^3) (3 rows for r = 0,w/2,w)
+   N_ion1      = zeros(3,N_z);  % final 1+ ion density N_ion1(t=inf,z) (1/m^3) (3 rows for r = 0,w/2,w)
+   N_ion2      = zeros(3,N_z);  % final 2+ ion density N_ion2(t=inf,z) (1/m^3) (3 rows for r = 0,w/2,w)
+   
+   Energy_Ionization  = zeros(1,N_z);   % total ionization energy at (z,z+dz) (J)
+   Energy_ATI  = zeros(1,N_z);  % total ATI energy at (z,z+dz) (J)
+   kT          = zeros(1,N_z);  % electron temperature (k_B times T) (J)
+   a_IB        = zeros(1,N_z);  % inverse Bremsstrahlung absorption coefficient (1/m)
+   Energy_IB   = zeros(1,N_z);  % total IB absorbed energy at (z,z+dz) (J)
+   a_TS        = zeros(1,N_z);  % Thomson scattering coefficient (1/m)
+   Energy_TS   = zeros(1,N_z);  % total Thomson scattered energy at (z,z+dz) (J)
+   GVD_plasma  = zeros(1,N_z);  % plasma group-velocity dispersion at z (sec^2/m)
+   GVD_Gouy    = zeros(1,N_z);  % Gouy phase group-velocity dispersion at z (sec^2/m)
+   D           = zeros(1,N_z);  % accumulated group-delay dispersion at z (sec^2)
+   n_plasma_d  = zeros(1,N_z);  % plasma refractive index of the driving pulse at z
+   C_Gouy      = zeros(1,N_z);  % accumulated group delay from 0 to z due to Gour phase (sec)
+   C           = zeros(1,N_z);  % accumulated group delay at z (sec)
+   k_d_plasma  = zeros(1,N_z);  % wavenumber of the driving pulse in the plasma (1/m)
+   k_d_total   = zeros(1,N_z);  % total wavenumber of the driving pulse (1/m)
+   Delta_phi_d_Gouy = zeros(1,N_z);  % Gouy phase shift from z to z + dz (rad)
+   phi_d_Gouy  = zeros(1,N_z);  % accumulated Gouy phase shift (rad)
+   phi_d_prop  = zeros(1,N_z);  % accumulated phase shift of the driving pulse due to propagation (rad)
+   v_d         = zeros(1,N_z);  % phase velocity of the driving pulse (m/sec)
+   ID          = zeros(3,N_z);  % results of ionization defocusing, Psi(r) = A - B r^2.
+                                % row 1: A (rad)
+                                % raw 2: B (m^-2)
+                                % raw 3: f_plasma (m), effective focal length due to ionization defocusing
+   f_plasma = ones(1,N_z)*10^9; % effective focal length due to ionization defocusing (m)
+   
+   time = [time_initial:DeltaTime:time_final];   % time sequence (sec) (row vector)
+   N_time = size(time,2);       % number of data points in time domain
+
+   t_z  = zeros(N_time,N_z);    % time sequence in position z (unit: sec)
+                                % (2D N_time-by-N_z matrix)
+   t_z(:,1) = time';            % time sequence in position z=0 (unit: sec)
+                                % (colume vector)
+   N_atom_r0 = zeros(N_time,N_z);  % atom density N_atom(t,r=0,z) (1/m^3)
+   N_ion1_r0 = zeros(N_time,N_z);  % 1+ ion density N_ion1(t,r=0,z) (1/m^3)
+   N_ion2_r0 = zeros(N_time,N_z);  % 2+ ion density N_ion2(t,r=0,z) (1/m^3)
+   N_e_r0    = zeros(N_time,N_z);  % electron density N_e(t,r=0,z) (1/m^3)
+   
+   
+% Calculate the initial condition of the main pulse propagation
+   b(1)  = pi * w0^2 / lambda_d;
+   q(1)  = z(1) - 1i * b(1);
+   zz(1) = real(q(1));
+   w(1)  = sqrt( (2/k_0) * ((zz(1)^2+b(1)^2)/b(1)) );
+   R(1)  = (zz(1)^2 + b(1)^2)/zz(1);
+   LaserEnergy(1) = PulseEnergy;
+   tau(1)    = tau_0;
+   I_peak(1) = I_0 * (w0/w(1))^2;    % peak intensity at z_ini
+   E_peak(1) = E_0 * (w0/w(1));      % peak electric field at z_ini
+
+   % Generate initial waveform E(z=z_ini,r,t). (complex form, unit: V/m)
+   % Three rows: row 1, r = 0.
+   %             row 2, r = w(z=z_ini)/2.
+   %             row 3, r = w(z=z_ini).
+   E_t(1,:) = ElectricField_d_ini(t_z(:,1)',0     ,LaserEnergy(1),q(1),omega_d,tau_0);
+   E_t(2,:) = ElectricField_d_ini(t_z(:,1)',w(1)/2,LaserEnergy(1),q(1),omega_d,tau_0);
+   E_t(3,:) = ElectricField_d_ini(t_z(:,1)',w(1)  ,LaserEnergy(1),q(1),omega_d,tau_0);
+   Efield_ini = E_t(1,:);
+
+   % Ionization at z = z_ini, and r = 0, w(z_ini)/2, w(z_ini).
+   % (1) r = 0:
+   ATI_result_1 = TunnelingIonizationRate_Linear...
+     (E_t(1,:),omega_d,time,E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,FigureSwitch);
+   if FigureSwitch
+      sgtitle('ionization at z = z_{ini} and r = 0.');
+      savefig(gcf,'Fig_1_Ionization_at_z_ini','compact');
+   end
+   ATI_result_1_0 = ATI_result_1;
+   
+   % (2) r = w(z_ini)/2:
+   ATI_result_2 = TunnelingIonizationRate_Linear...
+     (E_t(2,:),omega_d,time,E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,0);
+   ATI_result_2_0 = ATI_result_2;
+
+   % (3) r = w(z_ini):
+   ATI_result_3 = TunnelingIonizationRate_Linear...
+     (E_t(3,:),omega_d,time,E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,0);
+   ATI_result_3_0 = ATI_result_3;
+   
+   % Calculate the ionization loss and ATI-heating loss
+   %    Use the electron denslty at r=0.
+   
+   % final ionizatin state after the pulse (relative electron density) (arb. units)
+   Z_ion(1,1) = ATI_result_1_0{1};
+   Z_ion(2,1) = ATI_result_2_0{1};
+   Z_ion(3,1) = ATI_result_3_0{1};
+ 
+   % final electron density N_e(r,z) at position z = z_ini. (1/m^3)
+   N_e(:,1) = N_gas * Z_ion(:,1);
+   
+   % final atom density N_atom(r,z) at position z = z_ini. (1/m^3)
+   N_atom(1,1) = ATI_result_1_0{10} * N_gas;
+   N_atom(2,1) = ATI_result_2_0{10} * N_gas;
+   N_atom(3,1) = ATI_result_3_0{10} * N_gas;
+   
+   % final 1+ ion density N_ion1(r,z) at position z = z_ini. (1/m^3)
+   N_ion1(1,1) = ATI_result_1_0{11} * N_gas;
+   N_ion1(2,1) = ATI_result_2_0{11} * N_gas;
+   N_ion1(3,1) = ATI_result_3_0{11} * N_gas;
+   
+   % final 2+ ion density N_ion2(r,z) at position z = z_ini. (1/m^3)
+   N_ion2(1,1) = ATI_result_1_0{12} * N_gas;
+   N_ion2(2,1) = ATI_result_2_0{12} * N_gas;
+   N_ion2(3,1) = ATI_result_3_0{12} * N_gas;
+   
+   % time-averaged electron density at position z = z_ini. (1/m^3)
+   N_e_ave(1,1) = ATI_result_1_0{13} * N_gas;
+   N_e_ave(2,1) = ATI_result_2_0{13} * N_gas;
+   N_e_ave(3,1) = ATI_result_3_0{13} * N_gas;
+   
+   
+   % ionization energy per electron at r = 0 and z = z_ini. (unit: J)
+   Energy_Ionization_e = ATI_result_1_0{2};
+   
+   % ATI energy per electron at r = 0 and z = z_ini. (unit: J)
+   Energy_ATI_e = ATI_result_1_0{3};
+   
+   % atom density N_0(t,r=0,z) at z = z_ini. (colume matrix) (1/m^3)
+   N_atom_r0(:,1) = ATI_result_1_0{4}' * N_gas;
+   
+   % 1+ ion density N_1(t,r=0,z) at z = z_ini. (colume matrix) (1/m^3)
+   N_ion1_r0(:,1) = ATI_result_1_0{5}' * N_gas;
+   
+   % 2+ ion density N_2(t,r=0,z) at z = z_ini. (colume matrix) (1/m^3)
+   N_ion2_r0(:,1) = ATI_result_1_0{6}' * N_gas;
+   
+   % electron density N_e(t,r=0,z) at z = z_ini. (colume matrix) (1/m^3)
+   N_e_r0(:,1)    = ATI_result_1_0{9}' * N_gas;
+
+   % Fit the electron/ion density by Gaussian function.
+   rr = [0:1*um:3*w0]';   % coordinate r for the distribution (column vector)
+   N_rr = size(rr,1);     % point number of rr
+   
+   N_e_fit     = zeros(N_rr,N_z);  % fitted final atom density N_atom(r,z), N_rr-by-N_z matrix. (1/m^3)
+   N_e_ave_fit = zeros(N_rr,N_z);  % fitted final atom density N_atom(r,z), N_rr-by-N_z matrix. (1/m^3)
+   N_ion1_fit  = zeros(N_rr,N_z);  % fitted final 1+ ion density N_ion1(r,z), N_rr-by-N_z matrix. (1/m^3)
+   N_ion2_fit  = zeros(N_rr,N_z);  % fitted final 2+ ion density N_ion2(r,z), N_rr-by-N_z matrix. (1/m^3)
+   R_N_ion2    = zeros(1,N_z);     % 2+ ion density distribution radius
+
+   %DensityFitResult = DensityDistribution(N_e(:,1),w(1),rr,FigureSwitch,1,N_z);
+   %N_e_fit(:,1)     = DensityFitResult{2};
+   %   if FigureSwitch
+   %      sgtitle('fitted final electron density at z_{ini}');
+   %   end
+      
+   DensityFitResult = DensityDistribution(N_e_ave(:,1),w(1),rr,FigureSwitch,1,N_z);
+   N_e_ave_fit(:,1) = DensityFitResult{2};
+      if FigureSwitch
+         sgtitle('fitted time-averaged electron density at z_{ini}');
+      end
+      
+   DensityFitResult = DensityDistribution(N_ion1(:,1),w(1),rr,FigureSwitch,1,N_z);
+   N_ion1_fit(:,1)  = DensityFitResult{2};
+      if FigureSwitch
+         sgtitle('fitted final 1+ ion density at z_{ini}');
+      end
+      
+   DensityFitResult = DensityDistribution(N_ion2(:,1),w(1),rr,FigureSwitch,1,N_z);
+   N_ion2_fit(:,1)  = DensityFitResult{2};
+   R_N_ion2(1,1)    = DensityFitResult{1};
+      if FigureSwitch
+         sgtitle('fitted final 2+ ion density at z_{ini}');
+      end
+   
+   % total Ionization energy in the section z = z_ini ~ z_ini + dz (J)
+   Energy_Ionization(1) = Energy_Ionization_e * N_e(1,1) * pi * w(1)^2 * dz;
+
+   % total ATI energy in the section z = z_ini ~ z_ini + dz (J)
+   Energy_ATI(1) = Energy_ATI_e * N_e(1,1) * pi * w(1)^2 * dz;
+   
+   % electron temperature (k_B times T) (J)
+   kT(1) = Energy_ATI_e * (2/3);
+
+   % inverse Bremsstrahlung absorption coefficient (1/m)
+   a_IB(1) = InverseBremsstrahlungCoefficient(N_e(1,1),Z_ion(1,1),kT(1),omega_d);
+   
+   % total IB absorbed energy in a capillary section z = z_ini ~ z_ini + dz (J)
+   Energy_IB(1) = LaserEnergy(1) * a_IB(1) * dz;
+   
+   % Thomson scattering coefficient (1/m)
+   a_TS(1) = ThomsonScatteringCoefficient(N_e(1,1));
+
+   % total Thomson scattered energy in the section z = z_ini ~ z_ini+dz (J)
+   Energy_TS(1) = LaserEnergy(1) * a_TS(1) * dz;
+
+   % plasma group-velocity dispersion at z (sec^2/m)
+   %GVD_plasma(1) = GroupVelocityDispersion_plasma(omega_d,N_e(1,1));
+   GVD_plasma(1) = GroupVelocityDispersion_plasma(omega_d,N_e_ave(1,1));
+   
+   % Gouy phase group-velocity dispersion at z (sec^2/m)
+   GVD_Gouy(1) = GroupVelocityDispersion_Gouy(omega_d,q(1));
+
+   % accumulated group-delay dispersion (GDD) at z (sec^2)
+   D(1) = (GVD_plasma(1) + GVD_Gouy(1)) * dz;
+
+   % initial group delay due to Gouy phase shift (pass first section dz)
+   C_Gouy(1) = GroupDelay_Gouy(omega_d,q(1),dz);
+   
+   % plasma refractive index of the driving pulse at z
+   %n_plasma_d(1) = sqrt(1-(q_e^2 * N_e(1,1))/(epsilon_0 * m_e * omega_d^2));
+   n_plasma_d(1) = sqrt(1-(q_e^2 * N_e_ave(1,1))/(epsilon_0 * m_e * omega_d^2));
+   
+   % accumulated group delay at z (sec) (first section dz)
+   C(1) = dz/(c*n_plasma_d(1)) + C_Gouy(1);
+   
+   % wavenumber of the driving pulse in plasma (1/m)
+   k_d_plasma(1) = k_0 * n_plasma_d(1);
+   
+   % wavenumber variation due to Gouy phase shift (1-by-N_z array)
+   k_d_Gouy(1) = -b(1)/(zz(1)^2 + b(1)^2);
+   
+   % total wavenumber of the driving pulse (1/m)
+   k_d_total(1) = k_d_plasma(1) + k_d_Gouy(1);
+   
+   % Gouy phase shift from z_ini to z_ini + dz (rad)
+   Delta_phi_d_Gouy(1) = - atan((zz(1) + dz/n_plasma_d(1)) / b(1)) ...
+                         + atan(zz(1) / b(1));
+                     
+   % initial Gouy phase shift at z_ini (rad)
+   phi_d_Gouy_ini = -atan(zz(1)/b(1));
+
+   % accumulated Gouy phase shift at z_ini (rad)
+   phi_d_Gouy(1) = phi_d_Gouy_ini;
+   
+   % accumulated phase shift of the driving pulse due to propagation (rad)
+   phi_d_prop(1) = phi_d_Gouy(1) + k_d_plasma(1) * dz + Delta_phi_d_Gouy(1);
+   
+   % phase velocity of the driving pulse (m/sec)
+   v_d(1)        = omega_d/k_d_total(1);
+   
+   % effective focal length due to ionization defocusing
+   %ID(:,1) = IonizationDefocusing(N_e(:,1),w(1),dz,omega_d,FigureSwitch,1,N_z);
+   ID(:,1) = IonizationDefocusing(N_e_ave(:,1),w(1),dz,omega_d,FigureSwitch,1,N_z);
+   f_plasma(1) = ID(3,1);
+
+
+% Calculation of the driving pulse propagation step-by-step
+   for j = 1:N_z-1
+      disp([num2str(j),'/',num2str(N_z-1)]);
+      t_z(:,j+1) = time' + C(j);
+      
+      q(j+1)  = ((q(j)+dz)^(-1) - f_plasma(j)^(-1))^(-1); 
+      zz(j+1) = real(q(j+1));
+      b(j+1)  = -imag(q(j+1));
+      w(j+1)  = sqrt( (2/k_0) * ((zz(j+1)^2+b(j+1)^2)/b(j+1)) );
+      R(j+1)  = (zz(j+1)^2 + b(j+1)^2)/zz(j+1);
+
+      LaserEnergy(j+1) = LaserEnergy(j) - Energy_Ionization(j) - ...
+                         Energy_ATI(j) - Energy_IB(j) - Energy_TS(j);
+      tau(j+1)    = sqrt(tau(j)^2 + D(j)^2/tau(j)^2);
+      I_peak(j+1) = 2*LaserEnergy(j+1)/(pi^1.5 * tau(j+1) * w(j+1)^2);   % peak intensity (W/m^2)
+      E_peak(j+1) = sqrt(2*mu_0*c*I_peak(j+1));      % peak electric field (V/m)
+      
+      E_t(1,:) = ElectricField_d(t_z(:,j+1)',0       ,LaserEnergy(j+1),q(j+1),omega_d,tau_0,C(j),D(j),phi_d_prop(j));
+      E_t(2,:) = ElectricField_d(t_z(:,j+1)',w(j+1)/2,LaserEnergy(j+1),q(j+1),omega_d,tau_0,C(j),D(j),phi_d_prop(j));
+      E_t(3,:) = ElectricField_d(t_z(:,j+1)',w(j+1)  ,LaserEnergy(j+1),q(j+1),omega_d,tau_0,C(j),D(j),phi_d_prop(j));
+
+      % ionization at r = 0:
+      ATI_result_1 = TunnelingIonizationRate_Linear(...
+                     E_t(1,:),omega_d,t_z(:,j+1)',E_ion_0,E_ion_1,...
+                     E_ion_2,E_ion_3,E_ion_4,and(FigureSwitch,j==N_z-1));
+      if and(FigureSwitch,j==N_z-1)
+          sgtitle('ionization at z_{final} and r = 0.');
+          savefig(gcf,'Fig_1_Ionization_at_z_fin','compact');
+      end
+      
+      % ionization at r = w(z_j+1)/2:
+      ATI_result_2 = TunnelingIonizationRate_Linear(...
+                     E_t(2,:),omega_d,t_z(:,j+1)',E_ion_0,E_ion_1,...
+                     E_ion_2,E_ion_3,E_ion_4,0);
+      
+      % ionization at r = w(z_j+1):
+      ATI_result_3 = TunnelingIonizationRate_Linear(...
+                     E_t(3,:),omega_d,t_z(:,j+1)',E_ion_0,E_ion_1,...
+                     E_ion_2,E_ion_3,E_ion_4,0);
+   
+      Z_ion(1,j+1) = ATI_result_1{1}; % final ionizatin state at r = 0 (arb. units)
+      Z_ion(2,j+1) = ATI_result_2{1}; % final ionizatin state at r = w(z_j+1)/2 (arb. units)
+      Z_ion(3,j+1) = ATI_result_3{1}; % final ionizatin state at r = w(z_j+1) (arb. units)
+      
+      % final electron density N_e(r,z_j+1). (1/m^3) (3-by-N_z matrix)
+      N_e(:,j+1)     = N_gas * Z_ion(:,j+1);
+      %DensityFitResult = DensityDistribution(N_e(:,j+1),w(j+1),rr,FigureSwitch,j+1,N_z);
+      %N_e_fit(:,j+1)   = DensityFitResult{2};
+      %if and(FigureSwitch,j+1==N_z)
+      %   sgtitle('fitted electron density at z_{fin}');
+      %end
+      
+      % time-averaged electron density at position z_j+1 (1/m^3)
+      N_e_ave(1,j+1) = ATI_result_1{13} * N_gas;
+      N_e_ave(2,j+1) = ATI_result_2{13} * N_gas;
+      N_e_ave(3,j+1) = ATI_result_3{13} * N_gas;
+      DensityFitResult = DensityDistribution(N_e_ave(:,j+1),w(j+1),rr,FigureSwitch,j+1,N_z);
+      N_e_ave_fit(:,j+1) = DensityFitResult{2};
+      if and(FigureSwitch,j+1==N_z)
+         sgtitle('fitted time-averaged electron density at z_{fin}');
+      end
+   
+      % final density at position z_j+1 (1/m^3)
+      N_atom(1,j+1) = ATI_result_1{10} * N_gas;
+      N_atom(2,j+1) = ATI_result_2{10} * N_gas;
+      N_atom(3,j+1) = ATI_result_3{10} * N_gas;
+      
+      % final 1+ ion at position z_j+1 (1/m^3)
+      N_ion1(1,j+1) = ATI_result_1{11} * N_gas;
+      N_ion1(2,j+1) = ATI_result_2{11} * N_gas;
+      N_ion1(3,j+1) = ATI_result_3{11} * N_gas;
+      DensityFitResult  = DensityDistribution(N_ion1(:,j+1),w(j+1),rr,FigureSwitch,j+1,N_z);
+      N_ion1_fit(:,j+1) = DensityFitResult{2};
+      if and(FigureSwitch,j+1==N_z)
+         sgtitle('fitted final 1+ ion density at z_{fin}');
+      end
+      
+      % final 2+ ion at position z_j+1 (1/m^3)
+      N_ion2(1,j+1) = ATI_result_1{12} * N_gas;
+      N_ion2(2,j+1) = ATI_result_2{12} * N_gas;
+      N_ion2(3,j+1) = ATI_result_3{12} * N_gas;
+      DensityFitResult  = DensityDistribution(N_ion2(:,j+1),w(j+1),rr,FigureSwitch,j+1,N_z);
+      N_ion2_fit(:,j+1) = DensityFitResult{2};
+      R_N_ion2(j+1,1)   = DensityFitResult{1};
+      if and(FigureSwitch,j+1==N_z)
+         sgtitle('fitted final 2+ ion density at z_{fin}');
+      end
+   
+      Energy_Ionization_e = ATI_result_1{2}; % ionization energy per electron (J)
+      Energy_ATI_e = ATI_result_1{3};        % ATI energy per electron (J)
+      N_atom_r0(:,j+1) = ATI_result_1{4}' * N_gas; % atom density   N_0(t,r=0,z) (1/m^3) (N_time-by-N_z matrix)
+      N_ion1_r0(:,j+1) = ATI_result_1{5}' * N_gas; % 1+ ion density N_1(t,r=0,z) (1/m^3) (N_time-by-N_z matrix)
+      N_ion2_r0(:,j+1) = ATI_result_1{6}' * N_gas; % 2+ ion density N_2(t,r=0,z) (1/m^3) (N_time-by-N_z matrix)
+      N_e_r0(:,j+1)    = ATI_result_1{9}' * N_gas; % electron density N_e(t,r=0,z) (1/m^3) (N_time-by-N_z matrix)
+      
+      Energy_Ionization(j+1) = Energy_Ionization_e * N_e(1,j+1) * pi * w(j+1)^2 * dz;
+      Energy_ATI(j+1) = Energy_ATI_e * N_e(1,j+1) * pi * w(j+1)^2 * dz;
+      kT(j+1) = Energy_ATI_e * (2/3);       % electron temperature (k_B times T) (J)
+      a_IB(j+1) = InverseBremsstrahlungCoefficient(N_e(1,j+1),Z_ion(1,j+1),kT(j+1),omega_d);
+      Energy_IB(j+1) = LaserEnergy(j+1) * a_IB(j+1) * dz;
+      a_TS(j+1) = ThomsonScatteringCoefficient(N_e(1,j+1));
+      Energy_TS(j+1) = LaserEnergy(j+1) * a_TS(j+1) * dz;
+      
+      %GVD_plasma(j+1) = GroupVelocityDispersion_plasma(omega_d,N_e(1,j+1));
+      GVD_plasma(j+1) = GroupVelocityDispersion_plasma(omega_d,N_e_ave(1,j+1));
+      GVD_Gouy(j+1)   = GroupVelocityDispersion_Gouy(omega_d,q(j+1));
+      D(j+1)          = D(j) + (GVD_plasma(j+1) + GVD_Gouy(j+1))*dz;
+      
+      C_Gouy(j+1)     = GroupDelay_Gouy(omega_d,q(j+1),dz);
+      %n_plasma_d(j+1) = sqrt(1-(q_e^2 * N_e(1,j+1))/(epsilon_0 * m_e * omega_d^2));
+      n_plasma_d(j+1) = sqrt(1-(q_e^2 * N_e_ave(1,j+1))/(epsilon_0 * m_e * omega_d^2));
+      C(j+1)          = C(j) + dz/(c*n_plasma_d(j+1)) + C_Gouy(j+1);
+      
+      k_d_plasma(j+1) = k_0 * n_plasma_d(j+1);
+      k_d_Gouy(j+1)   = -b(j+1)/(zz(j+1)^2 + b(j+1)^2);
+      k_d_total(j+1)  = k_d_plasma(j+1) + k_d_Gouy(j+1);
+      phi_d_Gouy(j+1) = phi_d_Gouy(j) + Delta_phi_d_Gouy(j);
+      Delta_phi_d_Gouy(j+1) = - atan((zz(j+1) + dz/n_plasma_d(j+1)) / b(j+1)) ...
+                              + atan(zz(j+1) / b(j+1));
+      phi_d_prop(j+1) = phi_d_prop(j) + k_d_plasma(j+1) * dz + Delta_phi_d_Gouy(j+1);
+      v_d(j+1)        = omega_d/k_d_total(j+1);
+
+      %ID(:,j+1) = IonizationDefocusing(N_e(:,j+1),w(j+1),dz,omega_d,FigureSwitch,j+1,N_z);
+      ID(:,j+1) = IonizationDefocusing(N_e_ave(:,j+1),w(j+1),dz,omega_d,FigureSwitch,j+1,N_z);
+      f_plasma(j+1) = ID(3,j+1);
+   end
+   Efield_final = E_t(1,:);
+   
+% Export ionization results
+   result_ionization_ini(1,:) = t_z(:,1)/fs;         % time (fs)
+   result_ionization_ini(2,:) = real(Efield_ini);    % electric field at z_ini (V/m)
+   result_ionization_ini(3,:) = ATI_result_1_0{4}';  % relative atom density (arb. units)
+   result_ionization_ini(4,:) = ATI_result_1_0{5}';  % relative 1+ ion density (arb. units)
+   result_ionization_ini(5,:) = ATI_result_1_0{6}';  % relative 2+ ion density (arb. units)
+   result_ionization_ini(6,:) = ATI_result_1_0{9}';  % relative electron density (arb. units)
+   result_ionization_ini(7,:) = ATI_result_1_0{9}' * N_gas / 10^6;   % electron density (1/cm^3)
+
+   fid_output = fopen('Results_1_Ionization_ini.txt','w');
+   fprintf(fid_output,'   time     Efield_ini   atom_density  1+_ion_density  2+_ion_density  electron_density  electron_density\r\n');
+   fprintf(fid_output,'   (fs)       (V/m)      (arb.units)    (arb.units)     (arb.units)      (arb.units)         (1/cm^3)\r\n');
+   fprintf(fid_output,'%5.3E  % 5.3E   % 5.3E     % 5.3E      % 5.3E       % 5.3E        % 5.3E\r\n',result_ionization_ini);
+   fclose(fid_output);
+
+   result_ionization_final(1,:) = t_z(:,N_z)/fs;     % time (fs)
+   result_ionization_final(2,:) = real(Efield_final);% electric field at z_fin (V/m)
+   result_ionization_final(3,:) = ATI_result_1{4}';  % relative atom density (arb. units)
+   result_ionization_final(4,:) = ATI_result_1{5}';  % relative 1+ ion density (arb. units)
+   result_ionization_final(5,:) = ATI_result_1{6}';  % relative 2+ ion density (arb. units)
+   result_ionization_final(6,:) = ATI_result_1{9}';  % relative electron density (arb. units)
+   result_ionization_final(7,:) = ATI_result_1{9}' * N_gas / 10^6;   % electron density (1/cm^3)
+
+   fid_output = fopen('Results_1_Ionization_final.txt','w');
+   fprintf(fid_output,'   time        Efield_final  atom_density  1+_ion_density  2+_ion_density  electron_density  electron_density\r\n');
+   fprintf(fid_output,'   (fs)            (V/m)     (arb.units)    (arb.units)     (arb.units)      (arb.units)         (1/cm^3)\r\n');
+   fprintf(fid_output,'%5.7E   % 5.3E   % 5.3E     % 5.3E      % 5.3E       % 5.3E        % 5.3E\r\n',result_ionization_final);
+   fclose(fid_output);
+
+% Export propagation results (SI units)
+   result_SI(1,:)  = z;           % position (m)
+   result_SI(2,:)  = LaserEnergy; % laser pulse energy (J)
+   result_SI(3,:)  = Z_ion(1,:);  % final ionization state at r = 0 (arb .units)
+   result_SI(4,:)  = Z_ion(2,:);  % final ionization state at r = w(z)/2 (arb .units)
+   result_SI(5,:)  = Z_ion(3,:);  % final ionization state at r = w(z) (arb .units)
+   result_SI(6,:)  = N_e(1,:);    % final electron density at r = 0 (1/m^3)
+   result_SI(7,:)  = C;           % accumulated group delay at z (sec)
+   result_SI(8,:)  = GVD_plasma;  % plasma group-velocity dispersion at z (sec^2/m)
+   result_SI(9,:)  = GVD_Gouy;    % Gouy phase group-velocity dispersion at z (sec^2/m)
+   result_SI(10,:) = D;           % accumulated group-delay dispersion at z (sec^2)
+   result_SI(11,:) = tau;         % laser pulse duration at z (sec)
+   result_SI(12,:) = w;           % beam size w(z) (m)
+   result_SI(13,:) = I_peak;      % laser peak intensity at z (W/m^2)
+   result_SI(14,:) = E_peak;      % laser peak electric field at z (V/m)
+   result_SI(15,:) = kT;          % electron temperature (k_B times T) (J)
+   result_SI(16,:) = Energy_Ionization; % total ionization energy at (z,z+dz) (J)
+   result_SI(17,:) = Energy_ATI;        % total ATI energy at (z,z+dz) (J)
+   result_SI(18,:) = Energy_IB;         % total IB absorbed energy at (z,z+dz) (J)
+   result_SI(19,:) = Energy_TS;         % total Thomson scattered energy at (z,z+dz) (J)
+   result_SI(20,:) = N_e_ave(1,:);      % time-averaged electron density at r=0 (1/m^3)
+
+   fid_output = fopen('Results_2_DrivingPulsePropagation_SI_units.txt','w');
+   fprintf(fid_output,'position    laser_energy  ion_state_Z1  ion_state_Z2  ion_state_Z3  e_density   GD         GVD_plasma   GVD_Gouy    GDD      pulse_duration  beam_size_w  peak_intensity  peak_E_field  e_temp_kT   ionization  ATI_energy  IB_energy  TS_energy  N_e_ave\r\n');
+   fprintf(fid_output,'(m)         (J)           (arb.units)   (arb.units)   (arb.units)   (1/m^3)     (sec)       (s^2/m)     (s^2/m)    (s^2)         (sec)          (m)           (W/m^2)         (V/m)         (J)      energy(J)     (J)         (J)        (J)     (1/m^3)\r\n');
+   fprintf(fid_output,'%6.4E  %7.5E   %6.4f        %6.4f        %6.4f        %5.3E  % 5.3E  % 5.3E  % 5.3E  % 5.3E  %8.6E   %5.3E      %5.3E       %5.3E   %5.3E   %5.3E   %5.3E   %5.3E  %5.3E  %5.3E\r\n',result_SI);
+   fclose(fid_output);
+
+% Export propagation results (usual units)
+   result(1,:)  = z/mm;                 % position (mm)
+   result(2,:)  = LaserEnergy/mJ;       % laser pulse energy (mJ)
+   result(3,:)  = Z_ion(1,:);           % final ionization state at r = 0 (arb .units)
+   result(4,:)  = Z_ion(2,:);           % final ionization state at r = w(z)/2 (arb .units)
+   result(5,:)  = Z_ion(3,:);           % final ionization state at r = w(z) (arb .units)
+   result(6,:)  = N_e(1,:)*cm^3;        % final electron density at r = 0 (1/cm^3)
+   result(7,:)  = C/fs;                 % accumulated group delay at z (fs)
+   result(8,:)  = GVD_plasma/fs^2*mm;   % plasma group-velocity dispersion at z (fs^2/mm)
+   result(9,:)  = GVD_Gouy/fs^2*mm;     % Gouy phase group-velocity dispersion at z (fs^2/mm)
+   result(10,:) = D/fs^2;               % accumulated group-delay dispersion at z (fs^2)
+   result(11,:) = tau/fs;               % laser pulse duration at z (fs)
+   result(12,:) = w/mm;                 % beam size w(z) (mm)
+   result(13,:) = I_peak*cm^2;          % laser peak intensity at z (W/cm^2)
+   result(14,:) = E_peak;               % laser peak electric field at z (V/m)
+   result(15,:) = kT/eV;                % electron temperature (k_B times T) (eV)
+   result(16,:) = Energy_Ionization/mJ; % total ionization energy at (z,z+dz) (mJ)
+   result(17,:) = Energy_ATI/mJ;        % total ATI energy at (z,z+dz) (mJ)
+   result(18,:) = Energy_IB/mJ;         % total IB absorbed energy at (z,z+dz) (mJ)
+   result(19,:) = Energy_TS/mJ;         % total Thomson scattered energy at (z,z+dz) (mJ)
+   result(20,:) = N_e_ave(1,:)*cm^3;    % time-averaged electron density at r=0 (1/cm^3)
+   
+   fid_output = fopen('Results_2_DrivingPulsePropagation_usual_units.txt','w');
+   fprintf(fid_output,'position    laser_energy  ion_state_Z1  ion_state_Z2  ion_state_Z3  e_density   GD         GVD_plasma   GVD_Gouy    GDD      pulse_duration  beam_size_w  peak_intensity  peak_E_field  e_temp_kT   ionization  ATI_energy  IB_energy  TS_energy  N_e_ave\r\n');
+   fprintf(fid_output,'(mm)        (mJ)          (arb.units)   (arb.units)   (arb.units)   (1/cm^3)    (fs)       (fs^2/mm)    (fs^2/mm)  (fs^2)         (fs)          (mm)         (W/cm^2)         (V/m)        (eV)     energy(mJ)     (mJ)        (mJ)       (mJ)     (1/m^3)\r\n');
+   fprintf(fid_output,'%6.4E  %7.5E   %6.4f        %6.4f        %6.4f        %5.3E  % 5.3E  % 5.3E  % 5.3E  % 5.3E  %8.6E   %5.3E      %5.3E       %5.3E   %5.3E   %5.3E   %5.3E   %5.3E  %5.3E  %5.3E\r\n',result);
+   fclose(fid_output);
+   
+% Plot results
+   if FigureSwitch
+   figure;
+   subplot(5,3,1),  plot(z/mm,LaserEnergy/mJ),
+                    ylabel('laser energy (mJ)');
+                    xlabel('position z (mm)');
+   subplot(5,3,4),  plot(z/mm,E_peak),
+                    ylabel('E_{peak} (V/m)');
+                    xlabel('position z (mm)');
+   subplot(5,3,7),  plot(z/mm,I_peak),
+                    ylabel('I_{peak} (W/m^2)');
+                    xlabel('position z (mm)');
+   subplot(5,3,10), plot(z/mm,w/mm),
+                    ylabel('beam size w(z) (mm)');
+                    xlabel('position z (mm)');
+   subplot(5,3,13), plot(z/mm,phi_d_Gouy),
+                    ylabel('Gouy phase (rad)');
+                    xlabel('position z (mm)');
+   subplot(5,3,2), plot(z/mm,N_e(1,:)/cm^(-3),z/mm,N_e_ave(1,:)/cm^(-3)),
+                    ylabel('N_e(r=0) (cm^{-3})');
+                    xlabel('position z (mm)');
+                    legend('final','time-average','Location','NorthEast');
+   subplot(5,3,5),  plot(z/mm,GVD_plasma*mm/fs^2,z/mm,GVD_Gouy*mm/fs^2),
+                    ylabel('GVD (fs^2/mm)');
+                    xlabel('position z (mm)');
+                    legend('plasma','Gouy','Location','NorthEast');
+   subplot(5,3,8),  plot(z/mm,D/fs^2),
+                    ylabel('accumulated GDD (fs^2)');
+                    xlabel('position z (mm)');
+   subplot(5,3,11),  plot(z/mm,tau/fs),
+                    ylabel('pulse duration (fs)');
+                    xlabel('position z (mm)');
+   subplot(5,3,3),  plot(z/mm,Energy_Ionization/dz),
+                    ylabel('ionization loss (mJ/mm)');
+                    xlabel('position z (mm)');
+   subplot(5,3,6),  plot(z/mm,Energy_ATI/dz),
+                    ylabel('ATI loss (mJ/mm)'),
+                    xlabel('position z (mm)');
+   subplot(5,3,9),  plot(z/mm,Energy_IB/dz),
+                    ylabel('IB loss (mJ/mm)'),
+                    xlabel('position z (mm)');
+   subplot(5,3,12), plot(z/mm,Energy_TS/dz),
+                    ylabel('TS loss (mJ/mm)'),
+                    xlabel('position z (mm)');
+   sgtitle('Driving pulse propagation');
+   savefig(gcf,'Fig_2_DrivingPulsePropagation','compact');
+   end
+
+% Plot the fitted electron/ion density distributions
+   if FigureSwitch
+      figure;
+      subplot(2,1,1), imagesc([z_ini z_fin]/mm,[0 max(rr)]/um,N_e_ave_fit*cm^3);
+         title_str = strcat('fitted time-averaged electron density');
+         title(title_str), xlabel('z (mm)'), ylabel('r (\mum)');
+         aa = colorbar; aa.Label.String = '(cm^{-3})';
+      subplot(2,1,2),imagesc([z_ini z_fin]/mm,[0 max(rr)]/um,N_ion2_fit*cm^3);
+         title_str = strcat('fitted final 2+ ion density');
+         title(title_str), xlabel('z (mm)'), ylabel('r (\mum)');
+         aa = colorbar; aa.Label.String = '(cm^{-3})';
+      sgtitle('fitted electron/ion density distributions');
+      savefig(gcf,'Fig_3_FittedDensityDistributions','compact');
+   end
+   
+   
+% Part II: HHG calculation
+
+% Set the variables
+   lambda_m = lambda_d/m;      % HHG wavelength (m)
+   omega_m  = m * omega_d;     % HHG angular frequency (rad/sec)
+   
+% Dipole phase calculation
+   % Find the minimum intensity of the driving laser:
+   % U_m = m hbar omega_d = I_p + 3.17 Up(I_min)
+   U_m = m*hbar*omega_d;    % HHG photon energy (J) 
+   I_min = (U_m-I_p)/3.17*(2*m_e*omega_d^2)/(q_e^2*mu_0*c);  % unit: W/m^2
+   if min(I_peak) < I_min
+       I_peak_min = min(I_peak)
+       I_min
+       disp('Laser intensity is too low.');
+       return;
+   end
+   
+   % dipole phase Phi_dipole(I_d) as a function of laser intensity I_d
+   N_dipole = 100;    % number of data points
+   % laser intensity range for dipole phase calculation (W/m^2)
+   I_dipole = linspace(min(I_peak)*0.8,max(I_peak)*1.2,N_dipole);  
+   E_dipole = sqrt(2*mu_0*c*I_dipole); % laser amplitude (V/m)
+   Phi_dipole_l = zeros(1,N_dipole);   % long-trajectory dipole phase (rad)
+   Phi_dipole_s = zeros(1,N_dipole);   % short-trajectory dipole phase (rad)
+   for j=1:100
+       temp = HHG_DipolePhase(m,E_dipole(j),I_p,omega_d);
+       Phi_dipole_l(j) = temp(1);   % long-trajectory dipole phase (rad)
+       Phi_dipole_s(j) = temp(2);   % short-trajectory dipole phase (rad)
+   end
+
+   % alpha coefficient
+   alpha_l = zeros(1,N_dipole);  % unit: m^2/W
+   alpha_s = zeros(1,N_dipole);  % unit: m^2/W
+   dI = I_dipole(2)-I_dipole(1);
+   alpha_l(1:N_dipole-1) = (Phi_dipole_l(2:N_dipole)-Phi_dipole_l(1:N_dipole-1))/dI;
+   alpha_l(N_dipole) = 2*alpha_l(N_dipole-1) - alpha_l(N_dipole-2); 
+   alpha_s(1:N_dipole-1) = (Phi_dipole_s(2:N_dipole)-Phi_dipole_s(1:N_dipole-1))/dI;
+   alpha_s(N_dipole) = 2*alpha_s(N_dipole-1) - alpha_s(N_dipole-2);
+
+   if FigureSwitch
+   figure;
+   subplot(1,4,1), plot(I_dipole*cm^2,Phi_dipole_l,'-o');
+      xlabel('intensity (W/cm^2)'), ylabel('\Phi_{dipole\_long} (rad)');
+      title('long-trajectory dipole phase');
+   subplot(1,4,2), plot(I_dipole*cm^2,Phi_dipole_s,'-o');
+      xlabel('intensity (W/cm^2)'), ylabel('\Phi_{dipole\_short} (rad)');
+      title('short-trajectory dipole phase');
+   subplot(1,4,3), plot(I_dipole,alpha_l,'-o');
+      xlabel('intensity (W/m^2)'), ylabel('\alpha_{long} (m^2/W)');
+      title('long-trajectory \alpha');
+   subplot(1,4,4), plot(I_dipole,alpha_s,'-o');
+      xlabel('intensity (W/m^2)'), ylabel('\alpha_{short} (m^2/W)');
+      title('short-trajectory \alpha');
+   sgtitle('Dipole phase calculation');
+   savefig(gcf,'Fig_4_DipolePhaseCalculation','compact');
+   end
+   
+   result_DipolePhase      = I_dipole;     % intensity (W/m^2)
+   result_DipolePhase(2,:) = Phi_dipole_l; % long-trajectory dipole phase (rad)
+   result_DipolePhase(3,:) = Phi_dipole_s; % short-trajectory dipole phase (rad)
+   result_DipolePhase(4,:) = alpha_l;      % long-trajectory alpha (m^2/W)
+   result_DipolePhase(5,:) = alpha_s;      % short-trajectory alpha (m^2/W)
+   
+   fid_output = fopen('Results_3_DipolePhase.txt','w');
+   fprintf(fid_output,'intensity  Phi_dipole_l  Phi_dipole_s   alpha_l     alpha_s\r\n');
+   fprintf(fid_output,' (W/m^2)      (rad)         (rad)       (m^2/W)     (m^2/W)\r\n');
+   fprintf(fid_output,'%5.3E   % 5.3E    % 5.3E  % 5.3E  % 5.3E\r\n',result_DipolePhase);
+   fclose(fid_output);
+
+% Trace a fixed harmonic wavefront starting at t0
+
+% Set the variables
+   q_m         = zeros(1,N_z);  % HHG q-parameter at z (m)
+   b_m         = zeros(1,N_z);  % HHG confocal parameter at z (m)
+   zz_m        = zeros(1,N_z);  % q_m(z) = zz_m(z) - i b_m(z) at z (m)
+   w_m         = zeros(1,N_z);  % HHG beam size at z (m)
+   R_m         = zeros(1,N_z);  % HHG wavefront radius of curvature at z (m)
+   n_plasma_m  = zeros(1,N_z);  % plasma refractive index of the HHG field at z
+   k_m_plasma  = zeros(1,N_z);  % wavenumber of the HHG in plasma (1/m)
+   k_m_Gouy    = zeros(1,N_z);  % wavenumber variation due to HHG Gouy phase shift (1/m)
+   k_m_total   = zeros(1,N_z);  % HHG total wavenumber (1/m)
+   Delta_phi_m_Gouy = zeros(1,N_z);  % HHG Gouy phase shift from z to z + dz (rad)
+   phi_m_Gouy  = zeros(1,N_z);  % HHG accumulated Gouy phase shift (rad)
+   ID_m        = zeros(3,N_z);  % results of ionization defocusing for the HHG field
+                                % row 1: A (rad), raw 2: B (m^-2), raw 3: f_plasma_m (m)
+   f_m_plasma  = zeros(1,N_z);  % effective focal length for the HHG field at z (m)
+   v_m         = zeros(1,N_z);  % phase velocity of the HHG field (m/sec)
+   
+   t_HWF       = zeros(1,N_z);  % arrival time of the HHG wavefront to position z (sec)
+   Delta_t_HWF = zeros(1,N_z);  % time difference between t_HWF and the group delay C of the driving pulse (sec)
+   i_t_HWF     = zeros(1,N_z);  % index of t_HWF (1-by-N_z array) in t_z (N_time-by-N_z matrix)
+                                % Note: not an integer.
+   N_ion1_r0_HWF = zeros(1,N_z); % 1+ ion density met by the HHG wavefront at (r=0,z) (1/m^3)
+   N_e_r0_HWF    = zeros(1,N_z); % electron density met by the HHG wavefront at (r=0,z) (1/m^3)
+   n_plasma_m    = zeros(1,N_z); % transient plasma refractive index of the HHG wavefront
+   k_m_plasma    = zeros(1,N_z); % transient wavenumber of the HHG wavefront in plasma (1/m)
+   k_m_Gouy      = zeros(1,N_z); % transient wavenumber variation due to HHG Gouy phase shift (1/m)
+   k_m_total     = zeros(1,N_z); % total wavenumber of the HHG (1/m)
+   E_d_HWF       = zeros(1,N_z); % the driving field met by the HHG wavefront (m/V)
+   I_d_HWF       = zeros(1,N_z); % the driving intensity met by the HHG wavefront (W/m^2)
+   Phi_d_HWF     = zeros(1,N_z); % the phase of the driving field met by the HHG wavefront (rad)
+   W_HWF         = zeros(1,N_z); % ionization rate met by the HHG wavefront (1/sec)
+   
+% Starting condition the harmonic wave (z = z_ini = z_1)
+   R_m(1)  = R(1);               % starting HHG wavefront radius of curvature (m)
+   w_m(1)  = R_N_ion2(1);        % starting HHG beam radius (m)
+   q_m(1)  = (1/R_m(1) + (1i*lambda_m)/(pi*w_m(1)^2))^(-1); % starting HHG q-parameter (m)
+   zz_m(1) = real(q_m(1));       % q_m(z) = zz_m(z) - i b_m(z) at z (m)
+   b_m(1)  = -imag(q_m(1));      % starting HHG confocal parameter (m)
+   w0_m    = sqrt(lambda_m*b_m(1)/pi);    % starting HHG beam waist radius (m)
+   phi_m_Gouy(1) = -atan(zz_m(1)/b_m(1)); % HHG initial Gouy phase shift at z_ini (rad)
+
+   t_HWF(1) = t0;                % starting time of the HHG wavefront
+   
+   for j = 1:N_z
+      % time difference between t_HWF and the group delay C of the driving pulse
+      Delta_t_HWF(j) = t_HWF(j) - (C(j) - C(1));
+   
+      % Find the index of t_HWF(j) in t_z(:,j) (N_time-by-1 matrix)
+      % note: not an integer
+      i_t_HWF(j) = (N_time + 1)/2 + Delta_t_HWF(j)/DeltaTime;
+
+      % Find the 1+ ion density met by the HHG wavefront at (r=0,z_j):
+      % N_ion1 at (r=0, t=t_HWF(z_j), z_j)
+      N_ion1_r0_HWF(j) = interp1([1:N_time]',N_ion1_r0(:,j),i_t_HWF(j),'linear');
+   
+      % Find the electron density met by the HHG wavefront at (r=0,z_j):
+      % N_e at (r=0, t=t_HWF(z_j), z_j)
+      N_e_r0_HWF(j) = interp1([1:N_time]',N_e_r0(:,j),i_t_HWF(j),'linear');
+      
+      % transient plasma refractive index of the HHG wave at all z_j
+      n_plasma_m(j) = sqrt(1-(q_e^2 * N_e_r0_HWF(j))/(epsilon_0 * m_e * omega_m^2));
+      
+      % transient wavenumber of the HHG field in plasma (1/m)
+      k_m_plasma(j) = m * k_0 * n_plasma_m(j);
+
+      % HHG Gouy phase shift from z_j to z_j+1 (rad)
+      Delta_phi_m_Gouy(j) = - atan((zz_m(j) + dz/n_plasma_m(j))/b_m(j))...
+                            + atan(zz_m(j) / b_m(j));
+      
+      % transient wavenumber variation due to HHG Gouy phase shift
+      k_m_Gouy(j) = -b_m(j) ./ (zz_m(j).^2 + b_m(j).^2);
+
+      % total wavenumber of the HHG (1/m) (1-by-N_z array)
+      k_m_total(j) = k_m_plasma(j) + k_m_Gouy(j);
+      
+      % phase velocity of the HHG (m/sec)
+      v_m(j) = omega_m ./ k_m_total(j);
+                     
+      % ionization defocusing effect
+      ID_m(:,j) = IonizationDefocusing(N_e_ave(:,j),w(j),dz,omega_m,0,j,N_z);
+      f_m_plasma(j) = ID_m(3,j);
+
+      if j < N_z
+         q_m(j+1)  = ((q_m(j)+dz)^(-1) - f_m_plasma(j)^(-1))^(-1); 
+         zz_m(j+1) = real(q_m(j+1));
+         b_m(j+1)  = -imag(q_m(j+1));
+         w_m(j+1)  = sqrt( (2/k_0) * ((zz_m(j+1)^2+b_m(j+1)^2)/b_m(j+1)) );
+         R_m(j+1)  = (zz_m(j+1)^2 + b_m(j+1)^2)/zz_m(j+1);
+         
+         phi_m_Gouy(j+1) = phi_m_Gouy(j) + Delta_phi_m_Gouy(j);
+         t_HWF(j+1) = t_HWF(j) + dz/v_m(j);
+      end
+      
+      % the driving field met by the HHG wavefront at (z,r=0,t=t_HWF(z))
+      E_d_HWF(j) = ElectricField_d(t_HWF(:,j),0,LaserEnergy(j),q(j),...
+                                   omega_d,tau_0,C(j)-C(1),D(j)-D(1),...
+                                   phi_d_prop(j));
+      % driving intensity met by the HHG wavefront (W/m^2)
+      I_d_HWF(j)   = abs(E_d_HWF(j)).^2 / (2*mu_0*c);
+      % driving field phase met by the HHG wavefront (rad)
+      Phi_d_HWF(j) = angle(E_d_HWF(j));
+      % phase correction:
+      if j > 1
+         Delta = Phi_d_HWF(j) - Phi_d_HWF(j-1);
+         if Delta > 5
+            Phi_d_HWF(j) = Phi_d_HWF(j) - 2*pi();
+         end
+         if Delta < -5
+            Phi_d_HWF(j) = Phi_d_HWF(j) + 2*pi();
+         end
+      end
+      % ionization rate met by the HHG wavefront (1/sec)
+      W_HWF(j) = StaticIonizationRate(I_p, abs(E_d_HWF(j)));
+   end
+   
+% phase mismatches
+   % wavenumber mismatch due to plasma dispersion (1-by-N_z array)
+   Delta_k_plasma = m * k_d_plasma - k_m_plasma;
+   % accumulated phase mismatch due to plasma dispersion (rad)
+   Delta_Phi_plasma   = cumsum(Delta_k_plasma) * dz;     
+   Delta_Phi_plasma   = Delta_Phi_plasma - Delta_Phi_plasma(1);
+   
+   % wavenumber mismatch due to Gouy phase shift (1-by-N_z array)
+   Delta_k_Gouy = m * k_d_Gouy - k_m_Gouy;
+   % accumulated phase mismatch due to Gouy phase shift (rad)
+   Delta_Phi_Gouy = m * (phi_d_Gouy-phi_d_Gouy(1)) - ...
+                    (phi_m_Gouy-phi_m_Gouy(1));
+   
+% Dipole phase variation met by the fixed HHG wavefront (1-by-N_z array)
+   % long-trajectory emission
+   Phi_dipole_l_HWF = interp1(I_dipole,Phi_dipole_l,I_d_HWF,'spline');
+   Delta_Phi_dipole_l_HWF = Phi_dipole_l_HWF - Phi_dipole_l_HWF(1);
+   % short-trajectory emission
+   Phi_dipole_s_HWF = interp1(I_dipole,Phi_dipole_s,I_d_HWF,'spline');
+   Delta_Phi_dipole_s_HWF = Phi_dipole_s_HWF - Phi_dipole_s_HWF(1);
+   
+% total phase mismatch met by the fixed HHG wavefront (1-by-N_z array)
+   % This should be equal to the phase of the local harmonic field.
+   Delta_Phi_total_l_HWF = Delta_Phi_plasma + Delta_Phi_Gouy + Delta_Phi_dipole_l_HWF;
+   Delta_Phi_total_s_HWF = Delta_Phi_plasma + Delta_Phi_Gouy + Delta_Phi_dipole_s_HWF;
+   
+% Phase of the local harmonic field
+   % long-trajectory emission
+   Phi_LH_l = m * Phi_d_HWF + Phi_dipole_l_HWF;
+   % short-trajectory emission
+   Phi_LH_s = m * Phi_d_HWF + Phi_dipole_s_HWF;
+   
+% Calculate the local harmonic field
+   % long-trajectory emission (arb. units)
+   E_LH_l = N_ion1_r0_HWF .* W_HWF .* abs(E_d_HWF).^5 .* exp(1i*Phi_LH_l);
+   % short-trajectory emission (arb. units)
+   E_LH_s = N_ion1_r0_HWF .* W_HWF .* abs(E_d_HWF).^5 .* exp(1i*Phi_LH_s);
+   % perfect phase-matching condition (arb. units)
+   E_LH_perfect = N_ion1_r0_HWF .* W_HWF .* abs(E_d_HWF).^5;
+   
+% Calculate the accumulated harmonic field (arb. units)
+   E_HHG_l       = cumsum(E_LH_l);
+   E_HHG_s       = cumsum(E_LH_s);
+   E_HHG_perfect = cumsum(E_LH_perfect);
+   
+   figure;
+   subplot(5,3,1), plot(z/mm,Delta_t_HWF/fs);
+      xlabel('z (mm)');
+      ylabel('\Delta t (fs)');
+      title('time difference t_{HWF}(z) - C(z)')
+   subplot(5,3,4), plot(z/mm,abs(E_d_HWF),z/mm,E_peak);
+      xlabel('z (mm)');
+      ylabel('|E| (V/m)');
+      legend('E_{HWF}','E_{peak}','Location','SouthWest');
+      title('driving field amplitude')
+   subplot(5,3,7), plot(z/mm,Phi_d_HWF);
+      xlabel('z (mm)');
+      ylabel('\Phi_{d\_HWF} (rad)');
+      title('driving field phase')
+   subplot(5,3,10), plot(z/mm,Delta_Phi_plasma);
+      xlabel('z (mm)');
+      ylabel('\Delta \Phi_{plasma} (rad)');
+      legend('plasma','Location','NorthEast');
+      title('accumulated plasma phase mismatch');
+   subplot(5,3,13), plot(z/mm,Delta_Phi_Gouy);
+      xlabel('z (mm)');
+      ylabel('\Delta \Phi_{Gouy} (rad)');
+      legend('Gouy','Location','NorthEast');
+      title('accumulated Gouy phase mismatch');
+   
+   subplot(5,3,2), plot(z/mm,Delta_Phi_dipole_l_HWF);
+      xlabel('z (mm)');
+      ylabel('\Delta \Phi_{dipole\_l\_HWF} (rad)');
+      legend('long','Location','NorthWest');
+      title('accumulated dipole phase mismatch');
+   subplot(5,3,5), plot(z/mm,Delta_Phi_dipole_s_HWF);
+      xlabel('z (mm)');
+      ylabel('\Delta \Phi_{dipole\_s\_HWF} (rad)');
+      legend('short','Location','NorthWest');
+      title('accumulated dipole phase mismatch');
+   subplot(5,3,8), plot(z/mm,Phi_LH_l-Phi_LH_l(1),z/mm,Delta_Phi_total_l_HWF);
+      xlabel('z (mm)');
+      ylabel('\Delta \Phi_{LH\_long} (rad)');
+      legend('\Phi_{LH\_l}(z)-\Phi_{LH\_l}(0)','total phase mismatch','Location','NorthEast');
+      title('phase of the long-trajectory LH field');
+   subplot(5,3,11), plot(z/mm,Phi_LH_s-Phi_LH_s(1),z/mm,Delta_Phi_total_s_HWF);
+      xlabel('z (mm)');
+      ylabel('\Delta \Phi_{LH\_short} (rad)');
+      legend('\Phi_{LH\_s}(z)-\Phi_{LH\_s}(0)','total phase mismatch','Location','NorthEast');
+      title('phase of the short-trajectory LH field');
+   subplot(5,3,14), plot(z/mm,abs(E_HHG_perfect),z/mm,abs(E_HHG_l),z/mm,abs(E_HHG_s));
+      xlabel('z (mm)');
+      ylabel('|E_{HHG}| (arb. units)');
+      legend('perfect','long','short','Location','NorthWest');
+      title('accumulated harmonic field');
+
+   subplot(5,3,3), plot(z/mm,N_ion1_r0_HWF*cm^3);
+      xlabel('z (mm)');
+      ylabel('N\_1\_HWF (rad) (cm^{-3})');
+      title('1+ ion density met by the HHG wavefront');
+   subplot(5,3,6), plot(z/mm,W_HWF*fs);
+      xlabel('z (mm)');
+      ylabel('W\_HWF (1/fs)');
+      title('ionization rate met by the HHG wavefront');
+   subplot(5,3,9), plot(z/mm,N_ion1_r0_HWF .* W_HWF);
+      xlabel('z (mm)');
+      ylabel('N_{source} (arb. units)');
+      title('source density');
+
+    % ---- NEW: local phase slopes per unit length ----
+    % Units: rad/m
+    dPhi_dipole_l_perdz = gradient(Delta_Phi_dipole_l_HWF, dz);  % ≈ ΔΦ_dipole_l_HWF / dz
+    dPhi_plasma_perdz   = Delta_k_plasma;                         % exact ΔΦ_plasma / dz
+    
+    % Plot both on the same axes in the existing figure
+    subplot(5,3,12);
+    plot(z/mm, dPhi_dipole_l_perdz, z/mm, dPhi_plasma_perdz);
+    xlabel('z (mm)');
+    ylabel('\Delta\Phi / dz (rad/m)');
+    legend('\Delta\Phi_{dipole\_l\_HWF} / dz', '\Delta\Phi_{plasma} / dz', ...
+           'Location','Best');
+    title('local phase slopes');
+
+
+   sgtitle('On the Fixed HHG Wavefront');
+   savefig(gcf,'Fig_5_PM_HHG','compact');
+
+   result_PM_HHG = z/mm;                   % position z (mm)
+   result_PM_HHG(2,:)  = abs(E_d_HWF);     % driving field amplitude (V/m)
+   result_PM_HHG(3,:)  = Phi_d_HWF;        % driving field phase (rad)
+   result_PM_HHG(4,:)  = Delta_Phi_plasma; % accumulated plasma phase mismatch (rad)
+   result_PM_HHG(5,:)  = Delta_Phi_Gouy;   % accumulated waveguide phase mismatch (rad)
+   result_PM_HHG(6,:)  = Delta_Phi_dipole_l_HWF; % accumulated dipole phase mismatch: long trajectory (rad)
+   result_PM_HHG(7,:)  = Delta_Phi_dipole_s_HWF; % accumulated dipole phase mismatch: short trajectory (rad)
+   result_PM_HHG(8,:)  = Phi_LH_l - Phi_LH_l(1); % phase variation of the long-trajectory LH field (rad)
+   result_PM_HHG(9,:)  = Phi_LH_s - Phi_LH_s(1); % phase variation of the short-trajectory LH field (rad)
+   result_PM_HHG(10,:) = abs(E_HHG_perfect); % accumulated HHG field: perfect PM condition (arb. units)
+   result_PM_HHG(11,:) = abs(E_HHG_l);       % accumulated HHG field: long-trajectory emission (arb. units)
+   result_PM_HHG(12,:) = abs(E_HHG_s);       % accumulated HHG field: short-trajectory emission (arb. units)
+   result_PM_HHG(13,:) = N_ion1_r0_HWF * cm^3;   % 1+ ion density met by the HHG wavefront (cm^-3)
+   result_PM_HHG(14,:) = W_HWF * fs;         % ionization rate met by the HHG wavefront (1/fs)
+   
+   fid_output = fopen('Results_4_PM_HHG.txt','w');
+   fprintf(fid_output,'position    |E_d_HWF|   Phi_d_HWF  D_Phi_plasma D_Phi_Gouy  D_Phi_dipole_l D_Phi_dipole_s  D_Phi_LH_l  D_Phi_LH_s |E_HHG_perfect|  |E_HHG_l|   |E_HHG_s|   N_ion1_HWF   W_HWF\r\n');
+   fprintf(fid_output,'  (mm)        (V/m)       (rad)        (rad)       (rad)        (rad)         (rad)          (rad)       (rad)        (arb.u)       (arb.u)     (arb.u)     (cm^-3)     (1/fs)\r\n');
+   fprintf(fid_output,'%6.4E  %5.3E  % 5.3E   % 5.3E  % 5.3E   % 5.3E    % 5.3E     % 5.3E   % 5.3E   % 5.3E    % 5.3E  % 5.3E  % 5.3E  % 5.3E\r\n',result_PM_HHG);
+   fclose(fid_output);
+   
+%result = result_PM_HHG;
+result = abs(E_HHG_l(N_z)/E_HHG_perfect(N_z));
+
+
+
+
+
+%--------------------------------------------------------------------------
+% ElectricField_d_ini:
+%    Generate the initial electric field at z_ini
+%    E_d_ini(z_ini,r,t) = 
+%       ElectricField_d_ini(t,r,LaserEnergy(z_ini),q(z_ini),omega_d,tau_0)
+%
+%       t: time (sec), row vector.
+%       r: radial position (m).
+%       LaserEnergy(z_ini): initial laser energy at z_ini (J).
+%       q(z_ini): initial q-parameter at z_ini (m).
+%       omega_d: laser angular frequency (rad/sec)
+%       tau_0: initial pulse duration (sec)
+%
+%    The output is a complex number. (unit: V/m)
+%--------------------------------------------------------------------------
+function E_d_ini = ElectricField_d_ini(t,r,LaserEnergy,q,omega_d,tau_0)
+
+   global c
+   global mu_0
+   
+   % real part of q-parameter (q = z - ib)
+   zz = real(q);
+   
+   % confocal parameter
+   b = -imag(q);
+   
+   % wavenumber (1/m)
+   k_0 = omega_d/c;
+   
+   % beam size
+   w  = sqrt( (2/k_0) * ((zz^2+b^2)/b) );
+   w0 = sqrt( (2/k_0) * b );
+   
+   % peak electric field at z_ini
+   E_peak = sqrt((4*mu_0*c*LaserEnergy)/(pi^(1.5)*tau_0*w^2));
+   
+   % peak electric field at the focal spot
+   E_0    = (w/w0) * E_peak;
+
+   % initial Electric field at z_ini (V/m)
+   E_d_ini = E_0 * (-1i*b/q) * exp(1i*k_0*r^2/(2*q)) * ...
+             exp(-(t.^2)/(2*tau_0^2)) .* exp(-1i * omega_d * t) ;
+end
+
+
+%--------------------------------------------------------------------------
+% ElectricField_d:
+%    Generate the complete electric field for ionization and HHG.
+%    E_d(z,r,t) = 
+%       ElectricField_d(t,r,LaserEnergy(z),q(z),omega_d,tau_0,C(z),D(z),phi_d_prop(z))
+%
+%       t: time (sec), row vector.
+%       r: radial position (m).
+%       LaserEnergy(z): laser energy at z (J).
+%       q(z): q-parameter at z (m).
+%       omega_d: laser angular frequency (rad/sec)
+%       tau_0: initial pulse duration (sec)
+%       C(z): accumulated group delay (sec)
+%       D(z): accumulated group-delay dispersion (GDD) (sec^2)
+%       phi_d_prop(z): accumulated phase shift due to propagation
+%                      ( k_0 n(z) z + GouyPhaseShift ) (rad)
+%
+%    The output is a complex number. (unit: V/m)
+%    Note: For the ionization calculation, set C=0 and phi_d_prop=0.
+%--------------------------------------------------------------------------
+function E_d = ElectricField_d(t,r,LaserEnergy,q,omega_d,tau_0,C,D,phi_d_prop)
+
+   global c
+   global mu_0
+   
+   % pulse duration (sec)
+   tau_z = sqrt(tau_0^2+D^2/tau_0^2);
+   
+   % real part of q-parameter (q = z - ib)
+   zz = real(q);
+   
+   % confocal parameter
+   b = -imag(q);
+   
+   % wavenumber (1/m)
+   k_0 = omega_d/c;
+   
+   % beam size
+   w  = sqrt( (2/k_0) * ((zz^2+b^2)/b) );
+   w0 = sqrt( (2/k_0) * b );
+   
+   % peak electric field at position z
+   E_peak = sqrt((4*mu_0*c*LaserEnergy)/(pi^(1.5)*tau_z*w^2));
+   
+   % phase of the electric field (rad)
+   phi_d = (1/2)*atan(D/tau_0^2) - D/(2*(tau_0^4+D^2))*(t-C).^2 ...
+           + phi_d_prop - omega_d*t;
+
+   % Electric field (V/m)
+   E_d = E_peak * exp(1i*k_0*r^2/(2*q)) * exp(-(t-C).^2/(2*tau_z^2)) ...
+         .* exp(1i*phi_d);
+   
+end
+
+
+%-------------------------------------------------------------------------
+% TunnelingIonizationRate_Linear:
+%    evaluation of the optical-field ionization rate, electron density,
+%    energy distribution, averaged energy, and etc.
+%
+%    1. Assume linear-polarized Gaussian pulse.
+%    2. MKS unit
+%
+%    Returned value: 1-by-8 cell matrix
+%      element 1 (a number) n_re: relative electron density after the pulse (arb. units)
+%      element 2 (a number) Energy_Ionization_e: average ionization energy per electron (unit: J)
+%      element 3 (a number) Energy_ATI_e: average ATI energy per electron, (unit: J)
+%      element 4 (row vector) n_0: relative atom density as a function of time (arb. units)
+%      element 5 (row vector) n_1: relative 1+ ion density as a function of time (arb. units)
+%      element 6 (row vector) n_2: relative 2+ ion density as a function of time (arb. units)
+%      element 7 (row vector) n_3: relative 3+ ion density as a function of time (arb. units)
+%      element 8 (row vector) n_4: relative 4+ ion density as a function of time (arb. units)
+%      element 9 (row vector) n_re: relative electron density as a function of time (arb. units)
+%      element 10 (a number) n_re: relative atom density after the pulse (arb. units)
+%      element 11 (a number) n_re: relative 1+ ion density after the pulse (arb. units)
+%      element 12 (a number) n_re: relative 2+ ion density after the pulse (arb. units)
+%-------------------------------------------------------------------------
+function result = TunnelingIonizationRate_Linear(E_t,omega_d,time,...
+                      E_ion_0,E_ion_1,E_ion_2,E_ion_3,E_ion_4,FigureSwitch)
+
+ % Unit conversion
+   global eV   
+   global fs   
+
+ % Physical constants
+   global c           %#ok<NUSED>
+   global q_e
+   global m_e
+   global mu_0        %#ok<NUSED>
+   global epsilon_0   %#ok<NUSED>
+   global h           %#ok<NUSED>
+   global hbar        %#ok<NUSED>
+     
+ % Physical Parameters
+   global E_H
+   global omega_a
+   global EField_0
+   E_H      = 13.6 * eV;            % ionization potential of hydrogen (J)
+   omega_a  = 4.134 * 10^16;        % atomic frequency unit (Hz)
+   EField_0 = 5.142 * 10^11;        % atomic field strength (V/m)
+   
+   N = size(E_t,2);                 % number of the time points
+   DeltaTime = time(2) - time(1);   % delta t (unit: sec)   
+   
+ % Calculation of the electric field of the laser pulse as a function of time (V/m)
+   % real form of the electric field (V/m)
+   EField_t     = real(E_t);
+   % absolute value of the electric field (V/m)   
+   EField_t_abs = abs(EField_t);
+   % envelope of the electric field (V/m)
+   EField_t_envelope = abs(E_t);
+   % phase of the electric field (rad)
+   EPhase_t = angle(E_t);
+   
+ % Ionization rate as a function of time (row vector) (Hz)
+   W_0_t = StaticIonizationRate(E_ion_0, EField_t_abs);  % 0  -> 1+
+   W_1_t = StaticIonizationRate(E_ion_1, EField_t_abs);  % 1+ -> 2+
+   W_2_t = StaticIonizationRate(E_ion_2, EField_t_abs);  % 2+ -> 3+
+   W_3_t = StaticIonizationRate(E_ion_3, EField_t_abs);  % 3+ -> 4+
+   W_4_t = StaticIonizationRate(E_ion_4, EField_t_abs);  % 4+ -> 5+
+   
+ % Calculation of the relative ion density as a function of time (row vector)
+   
+   % atom density (relative)
+   %disp('atom');
+   n_0 = ones(1,N);
+   for i = 2:N
+       n_0(i) = n_0(i-1) - n_0(i-1) * W_0_t(i-1) * DeltaTime;
+       if n_0(i)<0
+           n_0(i) = 0;
+       end
+   end
+   
+   % 1+ ion density (relative)
+   %disp('ion+1');
+   n_1 = zeros(1,N);
+   for i = 2:N
+       n_1(i) = n_1(i-1) - n_1(i-1) * W_1_t(i-1) * DeltaTime  + n_0(i-1) * W_0_t(i-1) * DeltaTime;
+       if n_1(i)<0
+           n_1(i) = 0;
+       end
+   end
+           
+   % 2+ ion density (relative)
+   %disp('ion+2');
+   n_2 = zeros(1,N);
+   for i = 2:N
+       n_2(i) = n_2(i-1) - n_2(i-1) * W_2_t(i-1) * DeltaTime + n_1(i-1) * W_1_t(i-1) * DeltaTime;
+       if n_2(i)<0
+           n_2(i) = 0;
+       end
+   end
+   
+   % 3+ ion density (relative)
+   %disp('ion+3');
+   n_3 = zeros(1,N);
+   for i = 2:N
+       n_3(i) = n_3(i-1) - n_3(i-1) * W_3_t(i-1) * DeltaTime + n_2(i-1) * W_2_t(i-1) * DeltaTime;
+       if n_3(i)<0
+           n_3(i) = 0;
+       end
+   end
+   
+   % 4+ ion density (relative)
+   %disp('ion+4');
+   n_4 = zeros(1,N);
+   for i = 2:N
+       n_4(i) = n_4(i-1) - n_4(i-1) * W_4_t(i-1) * DeltaTime + n_3(i-1) * W_3_t(i-1) * DeltaTime;
+       if n_4(i)<0
+           n_4(i) = 0;
+       end
+   end
+   
+   % 5+ ion density (relative)
+   %disp('ion+5');
+   n_5 = zeros(1,N);
+   for i = 2:N
+       n_5(i) = n_5(i-1) + n_4(i-1) * W_4_t(i-1) * DeltaTime;
+   end
+      
+   % error correction
+   n_total = n_0 + n_1 + n_2 + n_3 + n_4 + n_5;
+   % During the evaluation of n_i, the error is accumulated.
+   % This makes the relative total ion density to be unconserved.
+   % (i.e. 'n_total' is no longer being 1.)
+   % In order to reduce this error, we rescale n_i (i = 1, 2... 8, 9) by n_total.
+   n_0 = n_0 ./ n_total;
+   n_1 = n_1 ./ n_total;
+   n_2 = n_2 ./ n_total;
+   n_3 = n_3 ./ n_total;
+   n_4 = n_4 ./ n_total;
+   n_5 = n_5 ./ n_total;
+   %n_total = n_0 + n_1 + n_2 + n_3 + n_4 + n_5;
+   
+ % electron absorbed energy from ATI heating
+   Energy_ATI_t = ( q_e^2 .* EField_t_envelope .^2 ) / ( 2 * m_e * omega_d^2 ) .* sin(EPhase_t).^2;
+   % electron ATI energy as a function of time (J) (row vector)
+   
+   n_re = n_0*0 + n_1*1 + n_2*2 + n_3*3 + n_4*4 + n_5*5;
+   % relative electron density as a function of time n_e(t)
+
+   n_re_average = sum(n_re .* EField_t_envelope.^2)/sum(EField_t_envelope.^2);
+   % time-averaged relative electron density weighted by laser intensity
+   
+   dne_dt(2:N) = (n_re(2:N)-n_re(1:N-1))/DeltaTime;
+   % variation of relative electron density as a function of time (dn_e/dt)
+   
+   Energy_ATI_e = sum(dne_dt .* Energy_ATI_t) / sum(dne_dt);  % (unit: J)
+   % average ATI energy per electron
+   
+ % electron absorbed energy for ionization
+   Energy_Ionization_e = n_1(N)*E_ion_0 + ...
+                         n_2(N)*(E_ion_0 + E_ion_1) + ...
+                         n_3(N)*(E_ion_0 + E_ion_1 + E_ion_2) + ...
+                         n_4(N)*(E_ion_0 + E_ion_1 + E_ion_2 + E_ion_3) + ...
+                         n_5(N)*(E_ion_0 + E_ion_1 + E_ion_2 + E_ion_3 + E_ion_4);
+   % average ionization energy per electron
+   
+ % Data plotting
+   if FigureSwitch
+      t = time ./ fs;
+      figure;
+      subplot(4,1,1), plot(t,EField_t),
+                      ylabel('laser electric field (V/m)');
+      subplot(4,1,2), plot(t,n_0,t,n_1,t,n_2,t,n_3,t,n_4,t,n_5),
+                      ylabel('relative ion population');
+      subplot(4,1,3), plot(t, n_re), ylabel('relative electron density n_e');
+      subplot(4,1,4), plot(t, Energy_ATI_t / eV), ylabel('Energy_{ATI} (eV)'),
+      xlabel('time (fs)');
+   end
+
+ % Return results
+   result = {n_re(N),Energy_Ionization_e,Energy_ATI_e,n_0,n_1,n_2,n_3,n_4,n_re,n_0(N),n_1(N),n_2(N),n_re_average};
+            % unit: [arb. units, J, J, arb. units...]
+end
+
+
+%-------------------------------------------------------------------------
+% StaticIonizationRate:
+%    Evaluate the ionization rate as a function of ionization potential
+%    'E_ion' and static electric field 'EField'.
+%-------------------------------------------------------------------------
+function result = StaticIonizationRate(E_ion, EField)
+
+   global E_H
+   global omega_a
+   global EField_0
+
+   a = E_ion / E_H;
+   EField = EField + (EField==0)*10^-10;
+   b = EField_0 ./ EField;
+   
+   result = 4 * omega_a * a^(5/2) * b .* exp( (-2/3) * a^(3/2) .* b);
+
+end
+
+
+%-------------------------------------------------------------------------
+% InverseBremsstrahlungCoefficient:
+%    Evaluate the inverse Bremsstrahlung absorption coefficient as a
+%    function of electron density 'N_e', average ionization state 'Z_ion',
+%    and plasma temperature 'kT'.
+%-------------------------------------------------------------------------
+function result = InverseBremsstrahlungCoefficient(N_e, Z_ion, kT, omega_d)
+
+   global c
+   global q_e
+   global m_e
+   global epsilon_0
+   
+   % Coulomb logarithm
+   Lambda = 6*pi*((epsilon_0)*kT)^1.5 / (q_e^3 * N_e^0.5 * Z_ion);
+   
+   % plasma frequency
+   omega_p = sqrt((q_e^2 * N_e)/(epsilon_0 * m_e));
+   
+   % refractive index
+   n_plasma = sqrt(1-(omega_p^2/omega_d^2));
+   
+   % IB absorption coefficient (1/m)
+   a_IB = (1/(3*c*omega_d^2*n_plasma)) * (q_e^6*Z_ion*N_e^2*log(Lambda))/...
+          (2*pi*epsilon_0^2*m_e*kT)^1.5;
+   
+   result = a_IB;
+
+end
+
+
+%------------------------------------------------------------------------------
+% ThomsonScatteringCoefficient:
+%    Evaluate the Thomson scattering coefficient as a function of electron
+%    density 'N_e'.
+%------------------------------------------------------------------------------
+function result = ThomsonScatteringCoefficient(N_e)
+
+   global c
+   global q_e
+   global m_e
+   global epsilon_0
+   
+   % Thomson scattering cross-section
+   sigma_TS = (8*pi/3) * (q_e^4)/(4*pi*epsilon_0*m_e*c^2)^2;
+   
+   % Thomsone scattering coefficient
+   a_TS = N_e * sigma_TS;
+      
+   result = a_TS;
+
+end
+
+
+%------------------------------------------------------------------------------
+% GroupVelocityDispersion_plasma:
+%    Evaluate the plasma group-velocity dispersion as a function of laser
+%    angular frequency 'omega_d', and electron density 'N_e'.
+%    unit: sec^2/m
+%------------------------------------------------------------------------------
+function GVD_plasma = GroupVelocityDispersion_plasma(omega_d,N_e)
+
+   global c
+   global q_e
+   global m_e
+   global epsilon_0
+   
+   % plasma frequency 
+   omega_p = sqrt((N_e * q_e^2)/(epsilon_0 * m_e));
+   
+   % plasma group-velocity dispersion
+   GVD_plasma = -(omega_p^2)/c/(omega_d^2 - omega_p^2)^1.5;
+
+end
+
+
+%------------------------------------------------------------------------------
+% GroupVelocityDispersion_Gouy:
+%    Evaluate the Gouy phase group-velocity dispersion as a function of
+%    laser angular frequency 'omega_d' and gaussian beam q-parameter 'q'.
+%    unit: sec^2/m
+%------------------------------------------------------------------------------
+function GVD_Gouy = GroupVelocityDispersion_Gouy(omega_d,q)
+
+   global c
+   
+   % position
+   zz = real(q);    % q = z - ib, unit: m.
+
+   % confocal parameter
+   b = -imag(q);   % q = z - ib, unit: m.
+
+   % beam waist size
+   w0 = sqrt(2*c*b/omega_d);
+   
+   % group-velocity dispersion due to Gouy phase shift
+   GVD_Gouy = 4 * omega_d * (12 * c^3 * w0^6 * zz^2 - c * w0^10 * omega_d^2)...
+         / (4 * c^2 * zz^2 + w0^4 * omega_d^2)^3;
+
+end
+
+
+%------------------------------------------------------------------------------
+% GroupDelay_Gouy:
+%    group delay due to Gouy phase in section dz as a function of
+%    laser angular frequency 'omega_d' and gaussian beam q-parameter 'q'.
+%    unit: sec
+%------------------------------------------------------------------------------
+function C_Gouy = GroupDelay_Gouy(omega_d,q,dz)
+
+   global c
+   
+   % position
+   z1 = real(q);    % q = z - ib, unit: m.
+   z2 = z1 + dz;
+
+   % confocal parameter
+   b = -imag(q);    % q = z - ib, unit: m.
+
+   % beam waist size
+   w0 = sqrt(2*c*b/omega_d);
+   
+   % group delay in section dz
+   C_Gouy = (2 * c * w0^2 * z2) / (4 * c^2 * z2^2 + w0^4 * omega_d^2) -...
+            (2 * c * w0^2 * z1) / (4 * c^2 * z1^2 + w0^4 * omega_d^2);
+
+end
+
+
+%------------------------------------------------------------------------------
+% IonizationDefocusing:
+%    Find the effective focal length due to ionization defocusing.
+%    Fit the phase shift to a function Psi(r) = A - B r^2.
+%
+%    result = IonizationDefocusing(N_e,w(z),dz,omega,FigureSwitch,j,N_z)
+%
+%       N_e: electron density, 3-by-1 matrix. (unit: m^-3)
+%            N_e(1,1): electron density at r = 0,
+%            N_e(2,1): electron density at r = w(z)/2,
+%            N_e(3,1): electron density at r = w(z).
+%       w(z): beam size (gaussian beam 1/e field) (unit: m)
+%       dz: section length (unit: m)
+%       omega: angular frequency of light (unit: 1/sec)
+%
+%       return value: [A;B;f_plasma]  3-by-1 colume vector
+%          A: fitting function coefficient A (unit: rad)
+%          B: fitting function coefficient B (unit: m^-2)
+%          f_plasma: effective focal length (unit: m)
+%
+%------------------------------------------------------------------------------
+function result = IonizationDefocusing(N_e,w,dz,omega,FigureSwitch,j,N_z)
+
+   global c
+   global q_e
+   global m_e
+   global epsilon_0
+   global um
+   
+   % wavenumber
+   k = omega/c;
+   
+   % transverse position, 3-by-1 colume vector. (unit: um)
+   r = [0;w/2;w]/um;
+   
+   % refractive index of the plasma, 3-by-1 colume vector.
+   n_plasma = sqrt(1-(N_e * q_e^2)/(epsilon_0 * m_e * omega^2));
+   
+   % additional phase shift due to plasma: Psi(r), 3-by-1 colume vector. (unit: rad)
+   Psi_plasma = k * (n_plasma-1) * dz;
+   
+   % create the fitting function
+   ft = fittype('A-B*x^2');
+   
+   % fit the phase shift profile
+   Psi_plasma_cfit = fit(r,Psi_plasma,ft,'StartPoint',[0,1]);
+   
+   if and(FigureSwitch,j==1)
+       figure;
+       plot(Psi_plasma_cfit,r,Psi_plasma),
+       xlabel('r (\mum)'), ylabel('phase shift (rad)');
+       legend('Location','NorthWest');
+       sgtitle('Ionization defocusing calculation at z_{ini}');
+       savefig(gcf,'Fig_IonizationDefocusingCalculation_ini','compact');
+   end
+   
+   if and(FigureSwitch,j==N_z)
+       figure;
+       plot(Psi_plasma_cfit,r,Psi_plasma),
+       xlabel('r (\mum)'), ylabel('phase shift (rad)');
+       legend('Location','NorthWest');
+       sgtitle('Ionization defocusing calculation at z_{final}');
+       savefig(gcf,'Fig_IonizationDefocusingCalculation_final','compact');
+   end
+   
+   A = Psi_plasma_cfit.A;         % coefficient A, unit: rad.
+   B = Psi_plasma_cfit.B / um^2;  % coefficient B, unit: m^(-2).
+   f_plasma = k/(2*B);            % effective focal length (unit: m)
+   
+   result = [A;B;f_plasma];
+
+end
+
+%------------------------------------------------------------------------------
+% DensityDistribution:
+%    Fit the ion/electron density distribution to a Gaussian distribution
+%    as a function of radius r at position z.
+%
+%    result = DensityDistribution(N_density(z),w(z),rr,FigureSwitch,j,N_z)
+%
+%       N_density(z): atom/ion density at z, 3-by-1 matrix. (unit: m^-3)
+%          N_density(1,1): density at r = 0,
+%          N_density(2,1): density at r = w(z)/2,
+%          N_density(3,1): density at r = w(z).
+%
+%       w(z): beam radius at z (gaussian beam 1/e field) (unit: m)
+%
+%       rr: coordinate r, column vector, (unit: m).
+%
+%       FigureSwitch: figure switch 1 = ON, 0 = OFF.
+%
+%       j: counting index, N_z: final counting index.
+%
+%       return value: {R_density, N_fit(rr)}
+%          R_density: density distribution radius (m) (a number)
+%          N_fit(rr): fitted density distribution as a function of radius
+%                     rr. (unit: m^-3) (colume vector)
+%
+%------------------------------------------------------------------------------
+function result = DensityDistribution(N_density,w,rr,FigureSwitch,j,N_z)
+
+   % create the fitting function
+   ft = fittype('A*exp(-(x.^2)/(B^2))','coefficients',{'A','B'},...
+                'independent',{'x'});
+      
+   % fit the density distribution
+   r = [0;w/2;w];
+   N_density_cfit = fit(r,N_density,ft,'StartPoint',[N_density(1,1),w]);
+   R_density = N_density_cfit.B;     % density distribution radius (m)
+   
+   if and(FigureSwitch,j==1)
+       figure;
+       plot(N_density_cfit,r,N_density);
+       xlabel('r (m)'), ylabel('ion density (m^{-3})');
+       legend('Location','NorthEast');
+       savefig(gcf,'Fig_Fitted2+IonDensity_ini','compact');
+   end
+   
+   if and(FigureSwitch,j==N_z)
+       figure;
+       plot(N_density_cfit,r,N_density);
+       xlabel('r (m)'), ylabel('ion density (m^{-3})');
+       legend('Location','NorthEast');
+       savefig(gcf,'Fig_Fitted2+IonDensity_final','compact');
+   end
+   
+   result = {R_density,N_density_cfit(rr)};
+
+end
+
+
+%-------------------------------------------------------------------------
+% HHG_DipolePhase:
+%    Calculate the intrinsic dipole phase of the HHG.
+%
+%    HHG_DipolePhase(q,E_d,I_p,omega_d);
+%
+%       q: harmonic order
+%       E_d: driving electric field amplitude (V/m)
+%       I_p: material ionization potential (J)
+%       omega_d: laser angular frequency (rad/sec)
+%
+%    output: [Phi_dipole_l  Phi_dipole_s]
+%       Phi_dipole_l: long-trajectory dipole phase (rad)
+%       Phi_dipole_s: short-trajectory dipole phase (rad)
+%
+% Author: Hsu-hsin Chu (2021/7/11)
+%-------------------------------------------------------------------------
+function result = HHG_DipolePhase(q,E_d,I_p,omega_d)
+
+% Physical constants
+   global q_e
+   global m_e
+   global hbar
+
+% Find the ionization time t_0_q for a given harmonic order q and laser
+% amplitude E_d: t_0_q(q,E_d)
+%    long trajectory:  t_0 = 0 ~ 0.05T
+%    short trajectory: t_0 = 0.05T ~ 0.25T
+   t_0_q_l = IonizationTime_long(q,E_d,I_p,omega_d);   % unit: sec
+   t_0_q_s = IonizationTime_short(q,E_d,I_p,omega_d);  % unit: sec
+
+% Find the recombination time t_r_q for a given harmonic order q and laser
+% amplitude E_d: t_r_q(q,E_d)
+   t_r_q_l = RecombinationTime(omega_d,t_0_q_l);  % unit: sec
+   t_r_q_s = RecombinationTime(omega_d,t_0_q_s);  % unit: sec
+
+% Find the dipole phase for a given harmonic order q as a function of laser
+% amplitude E_d: Phi_dipole(E_d)
+   Phi_dipole_l = q*omega_d*t_r_q_l - (I_p/hbar)*(t_r_q_l-t_0_q_l) - ...
+          (q_e^2*E_d^2)/(2*hbar*m_e*omega_d^2) * (...
+            (-1/2/omega_d)*sin(omega_d*t_r_q_l)*cos(omega_d*t_r_q_l) + ...
+            (2/omega_d)*cos(omega_d*t_r_q_l)*sin(omega_d*t_0_q_l) - ...
+            (3/2/omega_d)*sin(omega_d*t_0_q_l)*cos(omega_d*t_0_q_l) + ...
+            (1/2+sin(omega_d*t_0_q_l)^2)*(t_r_q_l-t_0_q_l) );
+   Phi_dipole_s = q*omega_d*t_r_q_s - (I_p/hbar)*(t_r_q_s-t_0_q_s) - ...
+          (q_e^2*E_d^2)/(2*hbar*m_e*omega_d^2) * (...
+            (-1/2/omega_d)*sin(omega_d*t_r_q_s)*cos(omega_d*t_r_q_s) + ...
+            (2/omega_d)*cos(omega_d*t_r_q_s)*sin(omega_d*t_0_q_s) - ...
+            (3/2/omega_d)*sin(omega_d*t_0_q_s)*cos(omega_d*t_0_q_s) + ...
+            (1/2+sin(omega_d*t_0_q_s)^2)*(t_r_q_s-t_0_q_s) );
+   
+   result = [Phi_dipole_l, Phi_dipole_s];
+end
+
+
+% -----------------------------------------------------------------------
+% Find the ionization time of the "LONG" trajectory as a function of the
+% harmonic order q and the laser amplitude E_d:
+%    t_0_q_long(q,E_d)  unit: sec
+% long trajectory:  t_0 = 0 ~ 0.05T
+% -----------------------------------------------------------------------
+function result = IonizationTime_long(q,E_d,I_p,omega_d)
+% Unit conversion
+   global fs
+   global eV
+
+% Physical constants
+   global q_e
+   global m_e
+   global hbar
+
+% angular frequency and period
+   omega_d_fs = omega_d*fs;      % unit: rad/fs
+   T_fs = 2*pi/omega_d_fs;       % period, unit: fs
+   
+% photon energy U(t_0,I)    unit: J
+   U_fun = @(t_0_fs) I_p + q_e^2*E_d^2/2/m_e/omega_d^2 * ...
+      (sin(omega_d*RecombinationTime(omega_d,t_0_fs*fs)) - sin(omega_d_fs*t_0_fs))^2;
+
+% Error function (unit: eV)
+   Err = @(t_0_fs) (U_fun(t_0_fs) - q*hbar*omega_d)/eV;
+  
+% Find the ionization time t_0_q_fs for q-th harmonic
+   % long trajectory:  t_0 = 0 ~ 0.05T
+   t_0_q_fs = fzero(Err,[0 0.05*T_fs]);    % unit: fs
+   result = t_0_q_fs * fs;                 % unit: sec
+end
+
+
+% -----------------------------------------------------------------------
+% Find the ionization time of the "SHORT" trajectory as a function of the
+% harmonic order q and the laser amplitude E_d:
+%    t_0_q_short(q,E_d)  unit: sec
+% short trajectory:  t_0 = 0.05T ~ 0.25T
+% -----------------------------------------------------------------------
+function result = IonizationTime_short(q,E_d,I_p,omega_d)
+% Unit conversion
+   global fs
+   global eV
+
+% Physical constants
+   global q_e
+   global m_e
+   global hbar
+
+% angular frequency and period
+   omega_d_fs = omega_d*fs;      % unit: rad/fs
+   T_fs = 2*pi/omega_d_fs;       % period, unit: fs
+   
+% photon energy U(t_0,I)    unit: J
+   U_fun = @(t_0_fs) I_p + q_e^2*E_d^2/2/m_e/omega_d^2 * ...
+      (sin(omega_d*RecombinationTime(omega_d,t_0_fs*fs)) - sin(omega_d_fs*t_0_fs))^2;
+
+% Error function (unit: eV)
+   Err = @(t_0_fs) (U_fun(t_0_fs) - q*hbar*omega_d)/eV;
+  
+% Find the ionization time t_0_q_fs for q-th harmonic
+   % short trajectory:  t_0 = 0.05T ~ 0.25T
+   t_0_q_fs = fzero(Err,[0.05*T_fs 0.249*T_fs]);    % unit: fs
+   result = t_0_q_fs * fs;                          % unit: sec
+end
+
+
+%------------------------------------------------------------------------
+% Find the recombination time t_r(omega_d,t_0) (unit: sec)
+%------------------------------------------------------------------------
+function result = RecombinationTime(omega_d,t_0)
+   global fs
+   
+   % unit conversion
+   t_0_fs     = t_0/fs;          % unit: fs
+   omega_d_fs = omega_d*fs;      % unit: red/fs
+   T_fs = 2*pi/omega_d_fs;       % period, unit: fs
+   
+   % electron position x(t_0,t)
+   x_fun = @(t_fs) cos(omega_d_fs*t_fs) - cos(omega_d_fs*t_0_fs) + ...
+                   omega_d_fs * sin(omega_d_fs*t_0_fs)*(t_fs - t_0_fs);
+   
+   % recombination time, determined from x(t_0,t_r) = 0.
+   t_r_fs = fzero(x_fun,[t_0_fs+0.001 T_fs]);  % unit: fs
+   result = t_r_fs * fs;                       % unit: sec
+
+  % Ref: https://www.mathworks.com/help/matlab/ref/fzero.html
+end
+
+
+% ------------------------------------------------------------------------
+% HarmonicSourceSize:
+%    Estimation of the local harmonic source size.
+%    Fit the source distribution to a gaussian beam
+%
+%    result = HarmonicSourceSize(SourceDensity,w(z),FigureSwitch,j,N_z)
+%
+%       SourceDensity: source ion density, 3-by-1 matrix. (unit: m^-3)
+%            SourceDensity(1,1): source ion density at r = 0,
+%            SourceDensity(2,1): source ion density at r = w(z)/2,
+%            SourceDensity(3,1): source ion density at r = w(z).
+%       w(z): driving beam size (gaussian beam 1/e field) (unit: m)
+%
+%    output: w_m_HHG
+%       m-th harmonic beam size, gaussian beam 1/e field (unit: m)
+%
+% ------------------------------------------------------------------------
+function result = HarmonicSourceSize(SourceDensity,w,FigureSwitch,j,N_z)
+
+   global um
+   
+   % transverse position, 3-by-1 colume vector. (unit: um)
+   r = [0;w/2;w]/um;
+   
+   % create the fitting function
+   ft = fittype('A*exp(-B*x^2)');
+   
+   % fit the source density profile
+   SourceDensity_cfit = fit(r,SourceDensity,ft,'StartPoint',[1,1]);
+      
+   if and(FigureSwitch,j==1)
+       figure;
+       plot(Psi_plasma_cfit,r,SourceDensity),
+       xlabel('r (\mum)'), ylabel('source density (m^{-3})');
+       legend('Location','NorthWest');
+       sgtitle('harmonic beam size calculation at z_{ini}');
+       savefig(gcf,'Fig_HarmonicBeamSize_ini','compact');
+   end
+   
+   if and(FigureSwitch,j==(N_z-1))
+       figure;
+       plot(Psi_plasma_cfit,r,SourceDensity),
+       xlabel('r (\mum)'), ylabel('source density (m^{-3})');
+       legend('Location','NorthWest');
+       sgtitle('harmonic beam size calculation at z_{final}');
+       savefig(gcf,'Fig_HarmonicBeamSize_ini','compact');
+   end
+      
+   A = SourceDensity_cfit.A;         % coefficient A, unit: rad.
+   B = SourceDensity_cfit.B / um^2;  % coefficient B, unit: m^(-2).
+   w_m_HHG = sqrt(2/B);                  % harmonic beam size, 1/e field, unit: m.
+   
+   result = w_m_HHG;
+
+end
+
+
+%--------------------------------------------------------------------------
+% PhaseCorrection:
+%    Correct the discontinuous phase array between +/- pi to be a
+%    continuous array.
+%    
+%    result = PhaseCorrection(phi_input)
+%
+%    phi_input: discontinuous phase array (row vector) between +/- pi
+%    result: continuous phase array which may beyond +/- pi.
+%--------------------------------------------------------------------------
+function result = PhaseCorrection(phi_input)
+
+   N_phase = size(phi_input,2);
+   Delta_phi = zeros(1,N_phase);
+   Delta_phi(2:N_phase) = phi_input(2:N_phase) - phi_input(1:N_phase-1);
+
+   temp1 = (Delta_phi < -5) - (Delta_phi > 5);
+   temp2 = cumsum(temp1);
+
+   phi_corrected = phi_input + 2*pi*temp2;
+
+   result = phi_corrected;
+
+end
+
+
