@@ -10,11 +10,11 @@
 % modular: the heavy lifting is delegated to helper routines inside the
 % |theory/hhg| folder.
 
-parameterFilename = fullfile('source codes','HHG_Gouy_PM_v4_Parameters.txt');
+parameterFilename = fullfile(pwd,'HHG_Gouy_PM_v4_Parameters.txt');
 figureSwitch = 1;  % set to 0 to skip plotting
 
-addpath(fullfile(pwd,'theory'));
-addpath(fullfile(pwd,'theory','hhg'));
+addpath(fullfile(pwd, '..', 'theory'));
+addpath(fullfile(pwd, '..', 'theory','hhg'));
 initializeHHGGlobals();
 if ~isfile(parameterFilename)
     error('HHG_Gouy_PM_v4:ParameterFileMissing', ...
