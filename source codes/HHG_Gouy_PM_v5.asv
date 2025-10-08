@@ -829,12 +829,10 @@ fclose(fid_output);
    
 % Dipole phase variation met by the fixed HHG wavefront (1-by-N_z array)
    % long-trajectory emission
-   % Phi_dipole_l_HWF = interp1(I_dipole,Phi_dipole_l,I_d_HWF,'spline');
-   Phi_dipole_l_HWF = interp1_nanaware(I_dipole, Phi_dipole_l, I_d_HWF, 'pchip', NaN);
+   Phi_dipole_l_HWF = interp1(I_dipole,Phi_dipole_l,I_d_HWF,'spline');
    Delta_Phi_dipole_l_HWF = Phi_dipole_l_HWF - Phi_dipole_l_HWF(1);
    % short-trajectory emission
-   % Phi_dipole_s_HWF = interp1(I_dipole,Phi_dipole_s,I_d_HWF,'spline');
-   Phi_dipole_s_HWF = interp1_nanaware(I_dipole, Phi_dipole_s, I_d_HWF, 'pchip', NaN);
+   Phi_dipole_s_HWF = interp1(I_dipole,Phi_dipole_s,I_d_HWF,'spline');
    Delta_Phi_dipole_s_HWF = Phi_dipole_s_HWF - Phi_dipole_s_HWF(1);
    
 % total phase mismatch met by the fixed HHG wavefront (1-by-N_z array)
@@ -1761,12 +1759,4 @@ function result = PhaseCorrection(phi_input)
 
 end
 
-function vq = interp1_nanaware(x, y, xq, method, fillval)
-    m = ~isnan(x) & ~isnan(y);
-    if nnz(m) >= 2
-        vq = interp1(x(m), y(m), xq, method, fillval);
-    else
-        vq = nan(size(xq));
-    end
-end
 
