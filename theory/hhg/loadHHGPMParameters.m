@@ -16,6 +16,26 @@ function params = loadHHGPMParameters(parameterFilename)
 
    cleaner = onCleanup(@() fclose(fid));
 
+   % Define the unit-conversion helpers that existed in the legacy script so
+   % that parameter files which reference them (for example ``808*nm``) keep
+   % working when parsed in this sandboxed scope.
+   eV = 1.602e-19; %#ok<NASGU>
+   cm = 1e-2;      %#ok<NASGU>
+   mm = 1e-3;      %#ok<NASGU>
+   um = 1e-6;      %#ok<NASGU>
+   nm = 1e-9;      %#ok<NASGU>
+   fs = 1e-15;     %#ok<NASGU>
+   mJ = 1e-3;      %#ok<NASGU>
+
+   c = 2.99792458e8; %#ok<NASGU>  % speed of light (m/s)
+   q_e = 1.602e-19;   %#ok<NASGU>  % electron charge (C)
+   m_e = 9.101e-31;   %#ok<NASGU>  % electron mass (kg)
+   mu_0 = 4*pi*1e-7;  %#ok<NASGU>  % permeability of vacuum (N/A^2)
+   epsilon_0 = 8.854e-12; %#ok<NASGU> % permittivity of vacuum (F/m)
+   h = 6.626e-34;     %#ok<NASGU>  % Planck constant (J*s)
+   hbar = h/(2*pi);   %#ok<NASGU>  % Reduced Planck constant (J*s)
+
+   
    params = struct();
    while ~feof(fid)
        line = fgetl(fid);
