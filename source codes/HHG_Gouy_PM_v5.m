@@ -34,10 +34,12 @@
 %
 %     Author: Hsu-hsin Chu (2024/2/28)
 % Modified by Kao 
+% Solving I_min problem by using NaN
+
 close all
 clear
 
-ParameterFilename = 'HHG_Gouy_PM_v4_Parameters_40um_42mJ.txt'; 
+ParameterFilename = 'Para_He_205th_251009.txt'; 
 FigureSwitch = 1; 
 
 clear global;
