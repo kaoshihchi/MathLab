@@ -932,10 +932,10 @@ fclose(fid_output);
     
     % Plot both on the same axes in the existing figure
     subplot(5,3,12);
-    plot(z/mm, dPhi_dipole_l_perdz, z/mm, dPhi_plasma_perdz);
+    plot(z/mm, dPhi_dipole_l_perdz, z/mm, -dPhi_plasma_perdz);
     xlabel('z (mm)');
     ylabel('\Delta\Phi / dz (rad/m)');
-    legend('\Delta\Phi_{dipole\_l\_HWF} / dz', '\Delta\Phi_{plasma} / dz', ...
+    legend('\Delta\Phi_{dipole\_l\_HWF} / dz', '-\Delta\Phi_{plasma} / dz', ...
            'Location','Best');
     title('local phase slopes');
 
