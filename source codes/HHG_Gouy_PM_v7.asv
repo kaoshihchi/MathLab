@@ -239,6 +239,10 @@ clear global;
    
    % 2+ ion density N_2(t,r=0,z) at z = z_ini. (colume matrix) (1/m^3)
    N_ion2_r0(:,1) = ATI_result_1_0{6}' * N_gas;
+
+   % also keep 3+ and 4+ time-traces (needed if Ip = E_ion_2 or E_ion_3 or E_ion_4)
+    N_ion3_r0(:,1) = ATI_result_1_0{7}' * N_gas;  % 3+ ion density (1/m^3)
+    N_ion4_r0(:,1) = ATI_result_1_0{8}' * N_gas;  % 4+ ion density (1/m^3)
    
    % electron density N_e(t,r=0,z) at z = z_ini. (colume matrix) (1/m^3)
    N_e_r0(:,1)    = ATI_result_1_0{9}' * N_gas;
@@ -431,6 +435,7 @@ clear global;
       N_ion2(1,j+1) = ATI_result_1{12} * N_gas;
       N_ion2(2,j+1) = ATI_result_2{12} * N_gas;
       N_ion2(3,j+1) = ATI_result_3{12} * N_gas;
+
       DensityFitResult  = DensityDistribution(N_ion2(:,j+1),w(j+1),rr,FigureSwitch,j+1,N_z);
       N_ion2_fit(:,j+1) = DensityFitResult{2};
       R_N_ion2(j+1,1)   = DensityFitResult{1};
@@ -443,6 +448,10 @@ clear global;
       N_atom_r0(:,j+1) = ATI_result_1{4}' * N_gas; % atom density   N_0(t,r=0,z) (1/m^3) (N_time-by-N_z matrix)
       N_ion1_r0(:,j+1) = ATI_result_1{5}' * N_gas; % 1+ ion density N_1(t,r=0,z) (1/m^3) (N_time-by-N_z matrix)
       N_ion2_r0(:,j+1) = ATI_result_1{6}' * N_gas; % 2+ ion density N_2(t,r=0,z) (1/m^3) (N_time-by-N_z matrix)
+
+      N_ion3_r0(:,j+1) = ATI_result_1{7}' * N_gas;  % 3+ ion density (1/m^3)
+      N_ion4_r0(:,j+1) = ATI_result_1{8}' * N_gas;  % 4+ ion density (1/m^3)
+
       N_e_r0(:,j+1)    = ATI_result_1{9}' * N_gas; % electron density N_e(t,r=0,z) (1/m^3) (N_time-by-N_z matrix)
       
       Energy_Ionization(j+1) = Energy_Ionization_e * N_e(1,j+1) * pi * w(j+1)^2 * dz;
@@ -575,6 +584,7 @@ clear global;
    subplot(5,3,7),  plot(z/mm,I_peak),
                     ylabel('I_{peak} (W/m^2)');
                     xlabel('position z (mm)');
+                    
    subplot(5,3,10), plot(z/mm,w/mm),
                     ylabel('beam size w(z) (mm)');
                     xlabel('position z (mm)');
@@ -756,6 +766,13 @@ fclose(fid_output);
       % Find the 1+ ion density met by the HHG wavefront at (r=0,z_j):
       % N_ion1 at (r=0, t=t_HWF(z_j), z_j)
       N_ion1_r0_HWF(j) = interp1([1:N_time]',N_ion1_r0(:,j),i_t_HWF(j),'linear');
+
+      % Parent densities at (r=0, t=t_HWF(z_j), z_j) for all stages
+    N_atom_r0_HWF(j) = interp1([1:N_time]', N_atom_r0(:,j),  i_t_HWF(j), 'linear');  % 0
+    N_ion2_r0_HWF(j) = interp1([1:N_time]', N_ion2_r0(:,j),  i_t_HWF(j), 'linear');  % 2+
+    N_ion3_r0_HWF(j) = interp1([1:N_time]', N_ion3_r0(:,j),  i_t_HWF(j), 'linear');  % 3+
+    N_ion4_r0_HWF(j) = interp1([1:N_time]', N_ion4_r0(:,j),  i_t_HWF(j), 'linear');  % 4+
+
    
       % Find the electron density met by the HHG wavefront at (r=0,z_j):
       % N_e at (r=0, t=t_HWF(z_j), z_j)
@@ -862,25 +879,50 @@ Phi_LH_s = NaN(1, N_z);
 Phi_LH_l(mask_l) = m * Phi_d_HWF(mask_l) + Phi_dipole_l_HWF(mask_l);
 Phi_LH_s(mask_s) = m * Phi_d_HWF(mask_s) + Phi_dipole_s_HWF(mask_s);
 
+% ----------------- Parent-aware source for chosen Ip -----------------
+% Map Ip to the nearest of {E_ion_0 .. E_ion_4} to avoid == issues
+Elist   = [E_ion_0,  E_ion_1,  E_ion_2,  E_ion_3,  E_ion_4];
+[~,ik]  = min(abs(Elist - I_p));   % ik = 1..5 corresponds to 0->1+, 1+->2+, ...
+
+% Pick the parent density along the HWF
+switch ik
+    case 1  % Ip = E_ion_0 : 0 -> 1+
+        N_parent_HWF = N_atom_r0_HWF;
+    case 2  % Ip = E_ion_1 : 1+ -> 2+
+        N_parent_HWF = N_ion1_r0_HWF;
+    case 3  % Ip = E_ion_2 : 2+ -> 3+
+        N_parent_HWF = N_ion2_r0_HWF;
+    case 4  % Ip = E_ion_3 : 3+ -> 4+
+        N_parent_HWF = N_ion3_r0_HWF;
+    case 5  % Ip = E_ion_4 : 4+ -> 5+
+        N_parent_HWF = N_ion4_r0_HWF;
+end
+
+% Use the *matching* ionization potential for the rate, not a hard-coded Ip
+Wk_HWF = zeros(1, N_z);
+for j = 1:N_z
+    Wk_HWF(j) = StaticIonizationRate(Elist(ik), abs(E_d_HWF(j)));
+end
+
+% This is the parent-aware source term used below
+Source_HWF = N_parent_HWF .* Wk_HWF;
+
+
 % ---------- Local harmonic fields: ZERO where invalid (not NaN) ----------
 E_LH_l = zeros(1, N_z);
 E_LH_s = zeros(1, N_z);
-E_LH_l(mask_l) = N_ion1_r0_HWF(mask_l) .* W_HWF(mask_l) .* abs(E_d_HWF(mask_l)).^5 .* exp(1i * Phi_LH_l(mask_l));
-E_LH_s(mask_s) = N_ion1_r0_HWF(mask_s) .* W_HWF(mask_s) .* abs(E_d_HWF(mask_s)).^5 .* exp(1i * Phi_LH_s(mask_s));
 
-% Perfect phase-matching source is always defined
-E_LH_perfect = N_ion1_r0_HWF .* W_HWF .* abs(E_d_HWF).^5;
+E_LH_l(mask_l) = Source_HWF(mask_l) .* abs(E_d_HWF(mask_l)).^5 .* exp(1i * Phi_LH_l(mask_l));
+E_LH_s(mask_s) = Source_HWF(mask_s) .* abs(E_d_HWF(mask_s)).^5 .* exp(1i * Phi_LH_s(mask_s));
 
-% Accumulated harmonic fields (now robust)
+% Perfect phase-matching source uses the same parent-aware source density
+E_LH_perfect = Source_HWF .* abs(E_d_HWF).^5;
+
+% Accumulations stay robust
 E_HHG_l       = cumsum(E_LH_l);
 E_HHG_s       = cumsum(E_LH_s);
 E_HHG_perfect = cumsum(E_LH_perfect);
 
-% Optional: phase-for-plotting deltas, avoiding NaN baselines
-dPhi_LH_l = NaN(1, N_z);
-dPhi_LH_s = NaN(1, N_z);
-if ~isempty(i0l), dPhi_LH_l(mask_l) = Phi_LH_l(mask_l) - Phi_LH_l(i0l); end
-if ~isempty(i0s), dPhi_LH_s(mask_s) = Phi_LH_s(mask_s) - Phi_LH_s(i0s); end
 
 %%   
    figure;
@@ -934,7 +976,7 @@ if ~isempty(i0s), dPhi_LH_s(mask_s) = Phi_LH_s(mask_s) - Phi_LH_s(i0s); end
       legend('perfect','long','short','Location','NorthWest');
       title('accumulated harmonic field');
 
-   subplot(5,3,3), plot(z/mm,N_ion1_r0_HWF*cm^3);
+   subplot(5,3,3), plot(z/mm,N_parent_HWF*cm^3);
       xlabel('z (mm)');
       ylabel('N\_1\_HWF (rad) (cm^{-3})');
       title('1+ ion density met by the HHG wavefront');
