@@ -637,6 +637,60 @@ clear global;
       savefig(gcf,'Fig_3_FittedDensityDistributions','compact');
    end
    
+%% --- Virtual Wavefront Sensor Simulation (Phase Retrieval) ---
+disp('Simulating transverse wavefront sensor phase...');
+
+% 1. Probe Beam Parameters
+lambda_p = 532 * nm;            % Example: Green probe laser
+k_p = 2 * pi / lambda_p;
+% Critical density N_c = epsilon_0 * m_e * omega^2 / q_e^2
+omega_p_sensor = 2 * pi * c / lambda_p;
+N_c = (epsilon_0 * m_e * omega_p_sensor^2) / (q_e^2);
+
+% 2. Setup Transverse Grid (x-axis)
+% We use the same radial bounds as your 'rr' variable
+x_coords = [-max(rr):1*um:max(rr)]; 
+y_coords = [-max(rr):1*um:max(rr)]; % Integration path
+[X, Y] = meshgrid(x_coords, y_coords);
+R_grid = sqrt(X.^2 + Y.^2);         % Radial distance for mapping
+
+N_x = length(x_coords);
+Phase_xz = zeros(N_x, N_z);         % Resulting phase(x, z)
+
+% 3. Integrate for each longitudinal slice z
+for j = 1:N_z
+    % Current radial density profile at slice j
+    % We interpolate from your fitted density N_e_ave_fit
+    current_Ne_r = N_e_ave_fit(:, j); 
+    
+    % Interpolate density onto the 2D transverse grid (X, Y)
+    % Density is zero outside the simulated radial range 'rr'
+    Ne_transverse = interp1(rr, current_Ne_r, R_grid, 'linear', 0);
+    
+    % Refractive index change: delta_n = -Ne / (2 * Nc)
+    delta_n = -Ne_transverse / (2 * N_c);
+    
+    % Integrate along y (the rows or columns of our grid)
+    % trapz(Y_vector, delta_n_values)
+    Phase_xz(:, j) = k_p * trapz(y_coords, delta_n, 1);
+end
+
+% 4. Visualization
+if FigureSwitch
+    figure;
+    imagesc(z/mm, x_coords/um, Phase_xz);
+    title('Simulated Transverse Phase \phi(x, z)');
+    xlabel('Longitudinal Position z (mm)');
+    ylabel('Transverse Position x (\mum)');
+    colormap('jet');
+    cb = colorbar;
+    cb.Label.String = 'Phase Shift (rad)';
+    savefig(gcf, 'Fig_6_Wavefront_Sensor_Phase', 'compact');
+end
+
+% 5. Export Results
+result_PhaseWS = [x_coords'/um, Phase_xz]; % First column is x in um
+save('Results_5_Phase_XZ.mat', 'Phase_xz', 'x_coords', 'z');
    
 % Part II: HHG calculation
 
