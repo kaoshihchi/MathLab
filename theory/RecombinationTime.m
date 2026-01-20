@@ -10,7 +10,8 @@ function result = RecombinationTime(omega_d, t_0)
 % Output:
 %   result  : recombination time t_r (s), or NaN if not found.
 
-    global fs   % 1 fs in seconds
+    global fs;      % Declare it global
+    fs = 10^-15;    % Now assign the value
 
     % ---- Unit conversions ----
     t_0_fs     = t_0 / fs;          % fs
